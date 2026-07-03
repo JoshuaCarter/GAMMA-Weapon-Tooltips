@@ -9,6 +9,13 @@ function on_mcm_load()
 				text = "ui_mcm_dorn_weapon_tooltip_main_section",
 				gr = {
 					{
+						id = "show_damage_table",
+						type = "check",
+						val = 1,
+						def = true,
+						hint = "dorn_weapon_tooltip_show_damage_table",
+					},
+					{
 						id = "damage_stat",
 						type = "list",
 						val = 0,
@@ -42,6 +49,11 @@ function on_mcm_load()
 						id = "overview",
 						type = "desc",
 						text = "ui_mcm_dorn_weapon_tooltip_info_overview",
+					},
+					{
+						id = "damage_stat_info",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_damage_stat",
 					},
 					{
 						id = "armor_columns",

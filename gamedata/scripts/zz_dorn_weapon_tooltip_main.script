@@ -8,7 +8,7 @@
 	cell) and shows/hides rows. No icons - the type label carries the color.
 
 	    DAMAGE:              Dmg vs Torso (BRC)      Dmg vs Head (BRC)
-	    Type  AP 10 20 30 40 50 60  10 20 30 40 50 60
+	    Type  AP 10 20 30 40 50 60  10 20 30 35 45
 	    AP    51  .. .. .. .. .. ..    .. .. .. .. .. ..
 	    FMJ   20  .. .. .. .. .. ..    .. .. .. .. .. ..
 
@@ -36,6 +36,8 @@
 
 	2. column_headers - show GAMMA BRC tier (10-60) or NPC bone armor % in headers
 	   (labels only; each tier's damage uses its actor_armor_class NPC profile).
+
+	3. show_damage_table - per-ammo DAMAGE panel below the description (on by default).
 ]]
 
 local MOD_ID = "dorn_weapon_tooltip"
@@ -44,6 +46,7 @@ local DORN_COMMON_VERSION = "dorn_common_7367f5e7" -- managed by sync-dorn-commo
 local DORN
 
 local CONFIG = {
+	show_damage_table = true,
 	damage_stat = "hit_power",
 	column_headers = "brc",
 	debug_log = false,
@@ -90,6 +93,8 @@ local BRC_TIERS = {
 	{ torso = 0.440, torso_ap = 0.67, head = 0.450, head_ap = 0.67, hit_frac = 0.14, brc_torso = 60, brc_head = 45 },
 }
 local NUM_TIERS = #BRC_TIERS
+local NUM_HEAD_TIERS = NUM_TIERS - 1  -- skip brc_head 0 (same practical result as 10)
+local HEAD_TIER_START = 2
 
 -- GAMMA uses three gameplay difficulties (gdiff_1..3 / diff_game.type 1..3).
 -- grok_bo also defines [4] for legacy hardcore; GAMMA does not expose it.
@@ -252,7 +257,8 @@ local function apply_hit_power_stat_color(info)
 end
 
 local PANEL_TOP_OFFSET = 0    -- gap below item description, above our damage panel
-local BOTTOM_OFFSET = 2       -- gap between stacked tooltip sections + frame bottom pad
+local BOTTOM_OFFSET = 2       -- gap between damage panel and stats block
+local SECTION_GAP = 10        -- match vanilla UIInfoItem:Sync_Finale section spacing
 
 -- Generic rows, filled top-down in order. Rows beyond the data are hidden.
 local ROW_XML = {
@@ -362,6 +368,7 @@ local function on_option_change()
 	-- All MCM/palette work is optional - the per-ammo breakdown must keep working
 	-- even if DORN common failed to load, so nothing here is allowed to hard-fail.
 	if DORN and DORN.mcm then
+		CONFIG.show_damage_table = DORN.mcm.bool(MOD_ID, "main/show_damage_table", true)
 		CONFIG.damage_stat = read_damage_stat_mode()
 		CONFIG.column_headers = DORN.mcm.string(MOD_ID, "main/column_headers", "brc")
 		if CONFIG.column_headers ~= "npc" then
@@ -377,8 +384,8 @@ local function on_option_change()
 	apply_damage_stat()
 	invalidate_tooltip_cache()
 
-	log(LOG.LIFECYCLE, string.format("damage_stat=%s, column_headers=%s",
-		tostring(CONFIG.damage_stat), tostring(CONFIG.column_headers)))
+	log(LOG.LIFECYCLE, string.format("show_damage_table=%s, damage_stat=%s, column_headers=%s",
+		tostring(CONFIG.show_damage_table), tostring(CONFIG.damage_stat), tostring(CONFIG.column_headers)))
 end
 
 local function first_number(str)
@@ -534,6 +541,22 @@ local function cells_range(cells)
 	return lo, hi
 end
 
+-- Head display skips tier 1 (brc_head 0); color scale uses visible columns only.
+local function cells_range_head(cells)
+	local lo, hi = math.huge, -math.huge
+	for i = HEAD_TIER_START, NUM_TIERS do
+		local c = cells[i]
+		if c then
+			if c.dmg < lo then lo = c.dmg end
+			if c.dmg > hi then hi = c.dmg end
+		end
+	end
+	if lo == math.huge then
+		return 1, 1
+	end
+	return lo, hi
+end
+
 local function calc_tier_damages(hit_power, k_hit, k_ap_ltx, air_res, headshot, dist, diff_mult, pellet_mult)
 	local bone_mult = headshot and BONE_DMG_HEAD or BONE_DMG_TORSO
 	local out = {}
@@ -638,7 +661,7 @@ local function build_ammo_damage_rows(obj, sec)
 
 	for _, row in ipairs(rows) do
 		local tl, th = cells_range(row.torso)
-		local hl, hh = cells_range(row.head)
+		local hl, hh = cells_range_head(row.head)
 		ordered[#ordered + 1] = {
 			type = row.label,
 			ap = tostring(row.ap),
@@ -677,12 +700,15 @@ local function apply_column_headers(fields)
 	for i = 1, NUM_TIERS do
 		local tier = BRC_TIERS[i]
 		local torso_label = show_npc and format_npc_armor_pct(tier.torso) or tostring(tier.brc_torso)
-		local head_label = show_npc and format_npc_armor_pct(tier.head) or tostring(tier.brc_head)
 		if fields.col_labels.torso[i] then
 			fields.col_labels.torso[i]:SetText(torso_label)
 		end
-		if fields.col_labels.head[i] then
-			fields.col_labels.head[i]:SetText(head_label)
+	end
+	for h = 1, NUM_HEAD_TIERS do
+		local tier = BRC_TIERS[HEAD_TIER_START + h - 1]
+		local head_label = show_npc and format_npc_armor_pct(tier.head) or tostring(tier.brc_head)
+		if fields.col_labels.head[h] then
+			fields.col_labels.head[h]:SetText(head_label)
 		end
 	end
 end
@@ -730,6 +756,8 @@ local function init_row_fields(xml, dlg, row_path)
 	}
 	for i = 1, NUM_TIERS do
 		row.torso[i] = xml:InitTextWnd(row_path .. ":t" .. i, base)
+	end
+	for i = 1, NUM_HEAD_TIERS do
 		row.head[i] = xml:InitTextWnd(row_path .. ":h" .. i, base)
 	end
 	return row
@@ -738,6 +766,8 @@ end
 local COL_HDR_2 = { "type", "ap" }
 for i = 1, NUM_TIERS do
 	COL_HDR_2[#COL_HDR_2 + 1] = "t" .. i
+end
+for i = 1, NUM_HEAD_TIERS do
 	COL_HDR_2[#COL_HDR_2 + 1] = "h" .. i
 end
 
@@ -833,7 +863,10 @@ local function populate_damage_panel(info, data)
 			row.ap:SetTextColor(ap_display_color(rd.ap_val or 0))
 			for t = 1, NUM_TIERS do
 				set_damage_cell(row.torso[t], rd.torso and rd.torso[t], rd.torso_lo, rd.torso_hi)
-				set_damage_cell(row.head[t], rd.head and rd.head[t], rd.head_lo, rd.head_hi)
+			end
+			for h = 1, NUM_HEAD_TIERS do
+				local tier_idx = HEAD_TIER_START + h - 1
+				set_damage_cell(row.head[h], rd.head and rd.head[tier_idx], rd.head_lo, rd.head_hi)
 			end
 			row.base:SetWndPos(vector2():set(0, row_y))
 			row.base:Show(true)
@@ -856,21 +889,61 @@ local function populate_damage_panel(info, data)
 	info.dorn_wpn_damage:Show(true)
 end
 
-local function sync_damage_layout(info)
-	local tail = info.dorn_wpn_damage
+-- Reposition replacement-parts block (Parts in Tooltip mod) after we shift stats/ammo.
+local function sync_parts_layout(info, tail)
+	if not info.parts or not info.parts:IsShown() then
+		return tail
+	end
 
-	info:Sync_Y(info.desc, info.dorn_wpn_damage, PANEL_TOP_OFFSET)
+	local stats = info.stats_dialog
+	local stats_x = stats and stats:GetWndPos().x or 0
+	local parts_x = info.parts:GetWndPos().x
+	local vertical = stats and parts_x > stats_x + 50
 
-	if info.stats_dialog:IsShown() then
-		info:Sync_Y(info.dorn_wpn_damage, info.stats_dialog, BOTTOM_OFFSET)
-		tail = info.stats_dialog
-		if info.ammo:IsShown() then
-			info:Sync_Y(info.stats_dialog, info.ammo, BOTTOM_OFFSET)
-			tail = info.ammo
+	if vertical then
+		local stats_pos = stats:GetWndPos()
+		local parts_pos = info.parts:GetWndPos()
+		info.parts:SetWndPos(vector2():set(parts_pos.x, stats_pos.y))
+		if info.SyncPartsText then
+			info:SyncPartsText(true)
+		end
+		local parts_bottom = stats_pos.y + info.parts:GetHeight()
+		local tail_bottom = tail:GetWndPos().y + tail:GetHeight()
+		if parts_bottom > tail_bottom then
+			tail = info.parts
+		end
+	else
+		info:Sync_Y(tail, info.parts, SECTION_GAP)
+		tail = info.parts
+		if info.SyncPartsText then
+			info:SyncPartsText()
 		end
 	end
 
-	info:Sync_H(tail, info.frame, BOTTOM_OFFSET)
+	return tail
+end
+
+local function sync_damage_layout(info)
+	local tail = info.desc
+
+	if CONFIG.show_damage_table and info.dorn_wpn_damage and info.dorn_wpn_damage:IsShown() then
+		info:Sync_Y(info.desc, info.dorn_wpn_damage, PANEL_TOP_OFFSET)
+		tail = info.dorn_wpn_damage
+	end
+
+	if info.stats_dialog:IsShown() then
+		info:Sync_Y(tail, info.stats_dialog, BOTTOM_OFFSET)
+		tail = info.stats_dialog
+	end
+
+	if info.ammo and info.ammo:IsShown() then
+		info:Sync_Y(tail, info.ammo, SECTION_GAP)
+		tail = info.ammo
+	end
+
+	tail = sync_parts_layout(info, tail)
+
+	info:Sync_H(tail, info.frame, SECTION_GAP)
 end
 
 local function refresh_weapon_damage_panel(info, obj, sec)
@@ -879,6 +952,11 @@ local function refresh_weapon_damage_panel(info, obj, sec)
 	end
 
 	hide_damage_panel(info)
+
+	if not CONFIG.show_damage_table then
+		sync_damage_layout(info)
+		return
+	end
 
 	if not info:IsShown() then
 		return
