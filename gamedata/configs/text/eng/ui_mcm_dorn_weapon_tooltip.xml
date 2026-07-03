@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="windows-1251"?>
+
+<string_table>
+	<string id="ui_mcm_menu_dorn_weapon_tooltip">
+		<text>Dorn's Weapon Tooltip</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_main_section">
+		<text>Main</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_section">
+		<text>Info</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_overview">
+		<text>Weapon tooltips now show a DAMAGE panel below the description, the columns are:\n\n- Type: Shows an ammo type available to this weapon.\n- AP: Shows the AP value of the ammo.\n- vs Torso (BRC): Show how much damage this weapon + ammo will do to an NPC with an armor value equivalent to the shown BRC value.\n- vs Head (BRC): Same but vs the head.\n\nDamage numbers are colored grey to green according to how well they penetrate that BRC value.</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_armor_columns">
+		<text>Under the hood, every damage value uses hidden NPC bone-armor values (spine for torso, head bone for headshots), not the BRC values you see on armor. The BRC values are used to make things easier to understand. You can swap to the raw NPC armor % values if you prefer.</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_torso_tiers">
+		<text>What each vs Torso BRC column roughly matches in GAMMA (actor_armor_class0–5 bone profiles):\n- 10 — Novice: leather jacket, no armor (stalker_novice)\n- 20 — Trainee: light loner jacket (stalker_trainee)\n- 30 — Professional: LCS vest / PS5-M (stalker_professional)\n- 40 — Veteran: PS5 suit / soldier vest (stalker_veteran)\n- 50 — Master: SKAT-9 / Berill heavy armor (stalker_master)\n- 60 — Legend: exoskeleton (stalker_legend)</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_head_tiers">
+		<text>What each vs Head BRC column roughly matches (actor_helm_* profiles):\n- 0 — No helmet (stalker_novice, most unhelmeted NPCs)\n- 10 — Respirator / gas mask (actor_helm_respirator)\n- 20 — Screen helmet (actor_helm_screen)\n- 30 — Hard hat / ZSH (actor_helm_hardhat)\n- 35 — Battle helmet (actor_helm_battle)\n- 45 — Exo / Spartan helm (actor_helm_spartan)</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_damage_calc">
+		<text>How each damage cell is calculated (fixed at 20 m, current difficulty):\n\n1. dist = 1 + 20/200 × (k_air × 0.5 / (1 − k_air + 0.1))\n2. AP = k_ap × 10 (+ 0.04 on headshots) × tier_ap_scale / dist × difficulty × 0.80\n3. power = hit_power / dist × k_hit × bone_mult × tier_ap_scale × 1.1 × difficulty × pellets\n   (bone_mult = 0.9 torso, 3.65 head; pellets = buck_shot for shotguns, else 1)\n4. If AP ≥ tier armor: damage = power × 100\n   Else: damage = power × tier_chip × 100\n\nDifficulty multipliers: Scout/Stalker 1.30, Veteran 1.05, Master 0.90.\n\nNOT INCLUDED: artefacts, ballistic plates, silencers, barrel wear, range other than 20 m, or flat BR protection on your HUD. For broader GAMMA weapon mechanics see stalker-gamma-db.com.</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_development_section">
+		<text>Development</text>
+	</string>
+	<string id="ui_dorn_wpn_hit_power">
+		<text>Hit Power</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_damage_stat">
+		<text>Weapon damage stat row</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_damage_stat_lst_off">
+		<text>Off</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_damage_stat_lst_damage">
+		<text>Damage (Dmg)</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_damage_stat_lst_hit_power">
+		<text>Hit Power</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_column_headers_lst_brc">
+		<text>Player BRC (tier)</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_column_headers_lst_npc">
+		<text>NPC armor %</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_column_headers">
+		<text>Damage column headers</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_debug_log">
+		<text>Debug logging (on-screen)</text>
+	</string>
+</string_table>

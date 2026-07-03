@@ -1,0 +1,990 @@
+--[[
+	Dorn's Weapon Tooltip
+
+	Adds a per-ammo damage breakdown to weapon inventory tooltips (no LTX edits,
+	all values read live). Renders below the flavor description via
+	ui_dorn_weapon_tooltip.xml: the entire layout AND all static text live in the
+	XML; the script only fills the dynamic number cells (each number is its own
+	cell) and shows/hides rows. No icons - the type label carries the color.
+
+	    DAMAGE:              Dmg vs Torso (BRC)      Dmg vs Head (BRC)
+	    Type  AP 10 20 30 40 50 60  10 20 30 40 50 60
+	    AP    51  .. .. .. .. .. ..    .. .. .. .. .. ..
+	    FMJ   20  .. .. .. .. .. ..    .. .. .. .. .. ..
+
+	where
+	    AP <n>    = ammo k_ap x 1000 (matches the ammo's own info card),
+	    10..60    = six armor tiers (actor_armor_class0..5 + matched helmet).
+	                Damage always uses grok_bo NPC bone armor for penetration.
+	                BRC headers use the GAMMA tier scale (10-60, same as ammo
+	                card BR1-BR6); NPC % headers show the bone values used in calc.
+
+	One row per ammo round (label from inv_name_short, calibre prefix stripped).
+	AP column grey-to-yellow (display AP 1-100). Shift columns via XML.
+
+	This script is prefixed zz_ on purpose: G.A.M.M.A. Accurate Defense Values
+	rebuilds utils_ui.stats_table["weapon"] wholesale in ish_item_stats'
+	on_game_start (and on difficulty change), which would wipe our re-enabled
+	Damage row. Loading last (zz_) means our on_game_start / on_console_execute
+	run after theirs, so the row sticks.
+
+	Two optional MCM settings:
+
+	1. damage_stat - re-enables the built-in damage stat slot that G.A.M.M.A.
+	   Accurate Defense Values comments out of ish_item_stats.script. Defaults
+	   to Hit Power; can be switched to the normalized Damage (Dmg) row or Off.
+
+	2. column_headers - show GAMMA BRC tier (10-60) or NPC bone armor % in headers
+	   (labels only; each tier's damage uses its actor_armor_class NPC profile).
+]]
+
+local MOD_ID = "dorn_weapon_tooltip"
+local DORN_COMMON_VERSION = "dorn_common_7367f5e7" -- managed by sync-dorn-common.sh, do not hand-edit
+
+local DORN
+
+local CONFIG = {
+	damage_stat = "hit_power",
+	column_headers = "brc",
+	debug_log = false,
+}
+
+local LOG = {
+	LIFECYCLE = { order = 0, color = "gray" },
+	TOOLTIP   = { order = 1, color = "cyan" },
+}
+
+-- Damage is shown as hit_power * k_hit * 100 (x pellets for shotguns). That's
+-- the intrinsic per-shot base in the engine's health-fraction units, scaled to a
+-- readable percentage: GBOOBS computes a hit as
+--   hit_power * k_hit * 1.1 * ammo_mult * [distance/bone/barrel/difficulty/...]
+-- so hit_power * k_hit is the core term. We deliberately do NOT clamp it to
+-- 0-100 and do NOT divide by 1.5 - real damage isn't clamped or normalized;
+-- only the built-in stat *bar* does that (normalize(hit_power*k_hit, 0, 1.5)) to
+-- fit a 0-100% progress bar, which is why that bar reads lower than the raw value.
+local DAMAGE_SCALE = 100
+
+local BUCK_SELF = "ammo_12x70_buck_self"
+
+-- k_ap is the raw armor-piercing coefficient. The ammo's own info card scales it
+-- x1000 (k_ap 0.01 -> "10"), so we match that here.
+-- Displayed AP = k_ap * AP_SCALE; color scale matches typical ammo card range.
+local AP_SCALE = 1000
+local AP_COLOR_LO = 1
+local AP_COLOR_HI = 100
+local REF_DIST_M = 20
+
+-- Six tiers from actor_armor_class0..5 (NPC bone armor + ap_scale) with matched
+-- actor_helm_* head profiles. Penetration always uses torso/head bone armor
+-- (grok_bo). brc_torso/brc_head are the GAMMA tier labels (10-60, same scale
+-- as ammo-card BR1-BR6); each tier row is one armor class, not a separate calc.
+-- hit_frac = chip damage when a round fails to penetrate (approximation).
+-- Source: G.A.M.M.A. Outfits Balances/gamedata/configs/creatures/damages.ltx
+local BRC_TIERS = {
+	-- torso/head = NPC bone armor; brc_* = player outfit br_class; hit_frac
+	{ torso = 0.011, torso_ap = 1.00, head = 0.0,   head_ap = 1.00, hit_frac = 0.65, brc_torso = 10, brc_head = 0 },
+	{ torso = 0.080, torso_ap = 0.96, head = 0.030, head_ap = 1.00, hit_frac = 0.50, brc_torso = 20, brc_head = 10 },
+	{ torso = 0.150, torso_ap = 0.92, head = 0.150, head_ap = 0.90, hit_frac = 0.40, brc_torso = 30, brc_head = 20 },
+	{ torso = 0.300, torso_ap = 0.82, head = 0.300, head_ap = 0.78, hit_frac = 0.28, brc_torso = 40, brc_head = 30 },
+	{ torso = 0.360, torso_ap = 0.72, head = 0.350, head_ap = 0.75, hit_frac = 0.20, brc_torso = 50, brc_head = 35 },
+	{ torso = 0.440, torso_ap = 0.67, head = 0.450, head_ap = 0.67, hit_frac = 0.14, brc_torso = 60, brc_head = 45 },
+}
+local NUM_TIERS = #BRC_TIERS
+
+-- GAMMA uses three gameplay difficulties (gdiff_1..3 / diff_game.type 1..3).
+-- grok_bo also defines [4] for legacy hardcore; GAMMA does not expose it.
+local DIFFICULTY_MULT = {
+	[1] = 1.30,
+	[2] = 1.05,
+	[3] = 0.90,
+}
+
+local BONE_DMG_TORSO = 0.9   -- bip01_spine (grok_bo stalker_damage)
+local BONE_DMG_HEAD  = 3.65  -- bip01_head
+local GBOOBS_BONUS   = 1.1
+local AP_COMBAT_TAIL = 0.80  -- grok_bo final k_ap scale
+local HEAD_AP_BOOST  = 0.040
+
+local function clamp(v, lo, hi)
+	if v < lo then
+		return lo
+	end
+	if v > hi then
+		return hi
+	end
+	return v
+end
+
+local function lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+-- Damage cells fade grey (least damage) to green (most damage). Scaled across a
+-- shared min..max so identical numbers always read as the same color and more
+-- penetration is always brighter. Torso and head use separate shared scales
+-- (headshots hit ~4x harder, so a common scale would leave torso cells dim).
+-- gamma < 1 brightens the mid-range so the ramp reads as a smooth gradient.
+local DMG_COLOR_GAMMA = 0.75
+local DMG_CLR_MIN = { 135, 135, 135 }
+local DMG_CLR_MAX = { 64, 255, 64 }
+local function dmg_value_color(dmg, lo, hi)
+	local span = hi - lo
+	local t = (span > 0) and clamp((dmg - lo) / span, 0, 1) or 1
+	t = t ^ DMG_COLOR_GAMMA
+	return GetARGB(255,
+		math.floor(lerp(DMG_CLR_MIN[1], DMG_CLR_MAX[1], t)),
+		math.floor(lerp(DMG_CLR_MIN[2], DMG_CLR_MAX[2], t)),
+		math.floor(lerp(DMG_CLR_MIN[3], DMG_CLR_MAX[3], t)))
+end
+
+local function format_npc_armor_pct(armor)
+	return tostring(math.floor(armor * 100 + 0.5))
+end
+
+local function ap_display_color(ap)
+	local t = clamp((ap - AP_COLOR_LO) / (AP_COLOR_HI - AP_COLOR_LO), 0, 1)
+	return GetARGB(255,
+		math.floor(lerp(175, 255, t)),
+		math.floor(lerp(175, 224, t)),
+		math.floor(lerp(175, 64, t)))
+end
+
+local function tier_pen_armor(tier, headshot)
+	return headshot and tier.head or tier.torso
+end
+
+-- Round label from GAMMA inv_name_short, with the leading calibre stripped
+-- (e.g. "5.45x39 HP" -> "HP", "7.62x51 mm NATO AP rounds" -> "AP", "12x76 AP slugs"
+-- -> "AP slugs"). We drop the leading calibre token(s) plus noise words so both the
+-- curated inv_name_short and the verbose inv_name fallback come out tidy.
+
+-- Optional per-section overrides, checked first (fallback is the cleaner below).
+local AMMO_LABEL_OVERRIDE = {}
+
+-- Words that carry no ammo-type meaning and should be dropped from the label.
+local AMMO_NOISE_WORD = {
+	mm = true, nato = true, rounds = true, round = true,
+	shells = true, shell = true, shot = true, cartridge = true,
+	cartridges = true, calibre = true, caliber = true,
+}
+
+-- A pure calibre token like 7.62x51, .45, .338, 12x76, 5.7x28 (not 7N14, SP-6).
+local function is_calibre_token(tok)
+	return tok:match("^%.?%d[%d%.x]*$") ~= nil
+end
+
+local function clean_ammo_name(name)
+	local kept = {}
+	for tok in name:gmatch("%S+") do
+		local lower = string.lower(tok)
+		if not AMMO_NOISE_WORD[lower] and not is_calibre_token(tok) then
+			kept[#kept + 1] = tok
+		end
+	end
+	return table.concat(kept, " ")
+end
+
+local function ammo_display_label(sec)
+	local override = AMMO_LABEL_OVERRIDE[sec]
+	if override then
+		return override
+	end
+
+	local name_id = ini_sys:r_string_ex(sec, "inv_name_short")
+	if not name_id or name_id == "" then
+		name_id = ini_sys:r_string_ex(sec, "inv_name")
+	end
+	if not name_id or name_id == "" then
+		return "?"
+	end
+
+	local name = game.translate_string(name_id)
+	if not name or name == "" or name == name_id then
+		name = name_id
+	end
+
+	local cleaned = clean_ammo_name(name)
+	cleaned = cleaned:match("^%s*(.-)%s*$") or cleaned
+	if cleaned == "" then
+		-- All tokens were calibre/noise; fall back to the raw trimmed name.
+		cleaned = name:match("^%s*(.-)%s*$") or name
+	end
+	if cleaned == "" then
+		return "?"
+	end
+	return cleaned
+end
+
+local CLR = {
+	white = GetARGB(255, 255, 255, 255),
+	value = GetARGB(255, 175, 175, 175),
+}
+
+-- Caps of the damage/hit-power row we inject (both MCM modes). The engine paints
+-- stat values grey (clr_list p1); we recolor our row white after every update.
+local whiten_stat_labels_cache
+
+local function whiten_stat_labels()
+	if not whiten_stat_labels_cache then
+		whiten_stat_labels_cache = {
+			[game.translate_string("ui_dorn_wpn_hit_power")] = true,
+			[game.translate_string("ui_inv_damage")] = true,
+		}
+	end
+	return whiten_stat_labels_cache
+end
+
+local function apply_hit_power_stat_color(info)
+	if not info or not info.stats or CONFIG.damage_stat == "off" then
+		return
+	end
+
+	local labels = whiten_stat_labels()
+	for _, ele in pairs(info.stats) do
+		if ele.cap and ele.txt then
+			local cap = ele.cap:GetText()
+			if cap and labels[cap] then
+				ele.cap:SetTextColor(CLR.white)
+				ele.txt:SetTextColor(CLR.white)
+			end
+		end
+	end
+end
+
+local PANEL_TOP_OFFSET = 0    -- gap below item description, above our damage panel
+local BOTTOM_OFFSET = 2       -- gap between stacked tooltip sections + frame bottom pad
+
+-- Generic rows, filled top-down in order. Rows beyond the data are hidden.
+local ROW_XML = {
+	"panel:row_1",
+	"panel:row_2",
+	"panel:row_3",
+	"panel:row_4",
+}
+
+-- Parsed once; layout lives in configs/ui/ui_dorn_weapon_tooltip.xml.
+local DAMAGE_XML = CScriptXmlInit()
+DAMAGE_XML:ParseFile("ui_dorn_weapon_tooltip.xml")
+
+local base_uiinfo_init
+local base_uiinfo_update
+
+local LEGACY_DAMAGE_STAT = {
+	index = 3,
+	typ = "float",
+	name = "ui_inv_damage",
+	icon_p = "ui_wp_prop_damage",
+	icon_n = "",
+	track = false,
+	magnitude = 1,
+	unit = "st_stat_dmg",
+	compare = false,
+	sign = false,
+	show_always = true,
+	value_functor = { "ish_item_stats", "scale_100_for_pellets", "zz_dorn_weapon_tooltip_main", "prop_damage" },
+}
+
+local HIT_POWER_STAT = {
+	index = 3,
+	typ = "float",
+	name = "ui_dorn_wpn_hit_power",
+	icon_p = "ui_wp_prop_damage",
+	icon_n = "",
+	track = false,
+	magnitude = 1,
+	unit = "%",
+	compare = false,
+	sign = false,
+	show_always = true,
+	value_functor = {
+		"zz_dorn_weapon_tooltip_main", "scale_hit_power_for_pellets",
+		"zz_dorn_weapon_tooltip_main", "prop_hit_power",
+	},
+}
+
+local DAMAGE_STAT_BY_MODE = {
+	damage = LEGACY_DAMAGE_STAT,
+	hit_power = HIT_POWER_STAT,
+}
+
+local function log(log_type, msg)
+	if DORN and DORN.dbg and CONFIG.debug_log then
+		local slot = log_type or LOG.TOOLTIP
+		DORN.dbg.write(MOD_ID, slot.order, "[WeaponTooltip] " .. tostring(msg), slot.color)
+	end
+end
+
+local function apply_damage_stat()
+	if not utils_ui or not utils_ui.stats_table then
+		return
+	end
+
+	local weapon_stats = utils_ui.stats_table["weapon"]
+	if not weapon_stats then
+		return
+	end
+
+	weapon_stats["damage"] = DAMAGE_STAT_BY_MODE[CONFIG.damage_stat]
+end
+
+local function read_damage_stat_mode()
+	if not DORN or not DORN.mcm then
+		return "hit_power"
+	end
+
+	local mode = DORN.mcm.string(MOD_ID, "main/damage_stat", nil)
+	if mode == "off" or mode == "damage" or mode == "hit_power" then
+		return mode
+	end
+
+	-- Migrate the old boolean toggle (pre-dropdown MCM).
+	if DORN.mcm.get(MOD_ID, "main/show_damage_stat") ~= nil then
+		return DORN.mcm.bool(MOD_ID, "main/show_damage_stat", false) and "hit_power" or "off"
+	end
+
+	return "hit_power"
+end
+
+-- Info tooltip panels we've hooked. UIInfoItem:Update caches by item id/section
+-- and early-returns for the same item, so after an MCM change we must clear that
+-- cache or the stats row (damage/hit-power) won't rebuild until a different item
+-- is hovered.
+local tracked_infos = setmetatable({}, { __mode = "k" })
+
+local function invalidate_tooltip_cache()
+	for info in pairs(tracked_infos) do
+		info.id = nil
+		info.section = nil
+	end
+end
+
+local function on_option_change()
+	-- All MCM/palette work is optional - the per-ammo breakdown must keep working
+	-- even if DORN common failed to load, so nothing here is allowed to hard-fail.
+	if DORN and DORN.mcm then
+		CONFIG.damage_stat = read_damage_stat_mode()
+		CONFIG.column_headers = DORN.mcm.string(MOD_ID, "main/column_headers", "brc")
+		if CONFIG.column_headers ~= "npc" then
+			CONFIG.column_headers = "brc"
+		end
+		CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
+	end
+
+	if DORN and DORN.dbg then
+		DORN.dbg.set_enabled(MOD_ID, CONFIG.debug_log)
+	end
+
+	apply_damage_stat()
+	invalidate_tooltip_cache()
+
+	log(LOG.LIFECYCLE, string.format("damage_stat=%s, column_headers=%s",
+		tostring(CONFIG.damage_stat), tostring(CONFIG.column_headers)))
+end
+
+local function first_number(str)
+	if not str then
+		return 0
+	end
+	return tonumber(str:match("[%-%d%.]+")) or 0
+end
+
+local function gun_hit_power(obj, sec)
+	if obj and utils_item and utils_item.get_wpn_param then
+		return utils_item.get_wpn_param(obj, sec, "hit_power", 0) or 0
+	end
+	return first_number(SYS_GetParam(0, sec, "hit_power", "0"))
+end
+
+local function is_degraded_ammo(sec)
+	return string.find(sec, "bad", 1, true) ~= nil
+end
+
+-- Raw hit_power × k_hit for one ammo type (same formula as utils_ui.prop_damage, unnormalized).
+local function ammo_hit_power(hit_power, k_hit)
+	return (hit_power ~= 0) and (k_hit * hit_power) or k_hit
+end
+
+-- Highest hit_power × k_hit across every ammo the gun accepts (excludes degraded rounds).
+local function max_ammo_hit_power(obj, sec)
+	local id = obj and obj:id()
+	local hit_power = gun_hit_power(obj, sec)
+	local ammo_list = utils_item.get_ammo(sec, id)
+	local best = 0
+	for _, ammo_sec in pairs(ammo_list) do
+		if ammo_sec ~= BUCK_SELF and ini_sys:section_exist(ammo_sec)
+			and not is_degraded_ammo(ammo_sec) then
+			local val = ammo_hit_power(hit_power, ini_sys:r_float_ex(ammo_sec, "k_hit") or 1)
+			if val > best then
+				best = val
+			end
+		end
+	end
+	if best > 0 then
+		return best
+	end
+	return hit_power
+end
+
+function prop_hit_power(obj, sec)
+	return max_ammo_hit_power(obj, sec)
+end
+
+-- Same as utils_ui.prop_damage but uses best ammo k_hit, not first in list.
+function prop_damage(obj, sec)
+	return normalize(max_ammo_hit_power(obj, sec), 0, 1.5)
+end
+
+function scale_hit_power_for_pellets(obj, sec, base_file, base_func, param)
+	local base = _G[base_file][base_func](obj, sec, param)
+	local max_pellet_count = 0
+	local id = obj and obj:id()
+	local ammo_list = utils_item.get_ammo(sec, id)
+	for _, ammo_name in pairs(ammo_list) do
+		if ammo_name ~= BUCK_SELF then
+			local pellet_count = ini_sys:r_float_ex(ammo_name, "buck_shot") or 1
+			if pellet_count > max_pellet_count then
+				max_pellet_count = pellet_count
+			end
+		end
+	end
+	return math.floor(base * DAMAGE_SCALE * max_pellet_count)
+end
+
+local function max_pellets(ammo_list)
+	local max = 0
+	for _, ammo_sec in pairs(ammo_list) do
+		if ammo_sec ~= BUCK_SELF then
+			local pellets = ini_sys:r_float_ex(ammo_sec, "buck_shot") or 0
+			if pellets > max then
+				max = pellets
+			end
+		end
+	end
+	return max
+end
+
+local function get_difficulty_mult()
+	local diff = 3
+	if alife_storage_manager and alife_storage_manager.get_state then
+		local st = alife_storage_manager.get_state()
+		if st and st.diff_game and st.diff_game.type then
+			diff = st.diff_game.type
+		end
+	end
+	return DIFFICULTY_MULT[diff] or DIFFICULTY_MULT[3]
+end
+
+local function dist_atten(air_res, dist)
+	return 1 + dist / 200 * (air_res * 0.5 / (1 - air_res + 0.1))
+end
+
+local function combat_ap(k_ap_ltx, air_res, dist, ap_scale, diff_mult, headshot)
+	local k_ap = k_ap_ltx * 10
+	if headshot then
+		k_ap = k_ap + HEAD_AP_BOOST
+	end
+	k_ap = k_ap * ap_scale / dist_atten(air_res, dist) * diff_mult * AP_COMBAT_TAIL
+	return k_ap
+end
+
+local function base_power(hit_power, k_hit, air_res, dist, bone_mult, ap_scale, diff_mult, pellet_mult)
+	return hit_power / dist_atten(air_res, dist)
+		* k_hit * bone_mult * ap_scale * GBOOBS_BONUS * diff_mult * pellet_mult
+end
+
+local function effective_dmg(hit_power, k_hit, k_ap_ltx, air_res, armor, ap_scale, hit_frac, bone_mult, headshot, dist, diff_mult, pellet_mult)
+	local ap = combat_ap(k_ap_ltx, air_res, dist, ap_scale, diff_mult, headshot)
+	local power = base_power(hit_power, k_hit, air_res, dist, bone_mult, ap_scale, diff_mult, pellet_mult)
+	local penetrated = ap >= armor
+	local dmg = penetrated and power or (power * hit_frac)
+	return {
+		dmg = dmg * DAMAGE_SCALE,
+		penetrated = penetrated,
+	}
+end
+
+local function fmt_tier_cells(vals)
+	local out = {}
+	for i = 1, NUM_TIERS do
+		local cell = vals[i]
+		if cell then
+			out[i] = {
+				text = tostring(math.floor(cell.dmg + 0.5)),
+				dmg = cell.dmg,
+				penetrated = cell.penetrated,
+			}
+		end
+	end
+	return out
+end
+
+-- Min/max damage across a section's tiers, used to scale the grey->green ramp.
+local function cells_range(cells)
+	local lo, hi = math.huge, -math.huge
+	for i = 1, NUM_TIERS do
+		local c = cells[i]
+		if c then
+			if c.dmg < lo then lo = c.dmg end
+			if c.dmg > hi then hi = c.dmg end
+		end
+	end
+	if lo == math.huge then
+		return 1, 1
+	end
+	return lo, hi
+end
+
+local function calc_tier_damages(hit_power, k_hit, k_ap_ltx, air_res, headshot, dist, diff_mult, pellet_mult)
+	local bone_mult = headshot and BONE_DMG_HEAD or BONE_DMG_TORSO
+	local out = {}
+	for i, tier in ipairs(BRC_TIERS) do
+		local armor = tier_pen_armor(tier, headshot)
+		local ap_scale = headshot and tier.head_ap or tier.torso_ap
+		out[i] = effective_dmg(
+			hit_power, k_hit, k_ap_ltx, air_res, armor,
+			ap_scale, tier.hit_frac, bone_mult, headshot,
+			dist, diff_mult, pellet_mult
+		)
+	end
+	return out
+end
+
+local function build_ammo_damage_rows(obj, sec)
+	local ammo_class = SYS_GetParam(0, sec, "ammo_class", "")
+	if not ammo_class or ammo_class == "" then
+		return nil
+	end
+
+	local ammo_list = utils_item.get_ammo(sec, obj and obj:id() or nil)
+	if not ammo_list or not ammo_list[1] then
+		return nil
+	end
+
+	local hit_power = gun_hit_power(obj, sec)
+	if hit_power <= 0 then
+		return nil
+	end
+
+	local pellets = max_pellets(ammo_list)
+	local pellet_mult = (pellets > 1) and pellets or 1
+	local diff_mult = get_difficulty_mult()
+
+	-- One row per unique ammo section (weapon ammo_class order, max ROW_XML).
+	local rounds = {}
+	local seen = {}
+
+	for _, ammo_sec in ipairs(ammo_list) do
+		if ammo_sec ~= BUCK_SELF and not seen[ammo_sec] and ini_sys:section_exist(ammo_sec)
+			and not is_degraded_ammo(ammo_sec) then
+			seen[ammo_sec] = true
+
+			local k_hit = ini_sys:r_float_ex(ammo_sec, "k_hit") or 1
+			local k_ap = ini_sys:r_float_ex(ammo_sec, "k_ap") or 0
+			local air_res = ini_sys:r_float_ex(ammo_sec, "k_air_resistance") or 0.05
+
+			rounds[#rounds + 1] = {
+				sec = ammo_sec,
+				label = ammo_display_label(ammo_sec),
+				k_hit = k_hit,
+				k_ap = k_ap,
+				air_res = air_res,
+				ap = math.floor(k_ap * AP_SCALE + 0.5),
+			}
+		end
+	end
+
+	if #rounds == 0 then
+		return nil
+	end
+
+	-- Highest AP first; the row cap then keeps the most penetrating rounds.
+	table.sort(rounds, function(a, b)
+		if a.ap ~= b.ap then
+			return a.ap > b.ap
+		end
+		return a.label < b.label
+	end)
+
+	local rows = {}
+	for _, r in ipairs(rounds) do
+		if #rows >= #ROW_XML then
+			break
+		end
+		local torso = fmt_tier_cells(calc_tier_damages(
+			hit_power, r.k_hit, r.k_ap, r.air_res,
+			false, REF_DIST_M, diff_mult, pellet_mult
+		))
+		local head = fmt_tier_cells(calc_tier_damages(
+			hit_power, r.k_hit, r.k_ap, r.air_res,
+			true, REF_DIST_M, diff_mult, pellet_mult
+		))
+		rows[#rows + 1] = {
+			label = r.label,
+			ap = r.ap,
+			torso = torso,
+			head = head,
+		}
+	end
+
+	if #rows == 0 then
+		return nil
+	end
+
+	-- Per-row color scales: each round's torso cells are ramped against that
+	-- round's own torso min/max, head cells against its own head min/max. This
+	-- makes the no-armor column the brightest for every round (100% of its punch
+	-- getting through) and dims cells as armor cuts into that round's damage.
+	local ordered = {}
+
+	for _, row in ipairs(rows) do
+		local tl, th = cells_range(row.torso)
+		local hl, hh = cells_range(row.head)
+		ordered[#ordered + 1] = {
+			type = row.label,
+			ap = tostring(row.ap),
+			ap_val = row.ap,
+			torso = row.torso,
+			head = row.head,
+			torso_lo = tl,
+			torso_hi = th,
+			head_lo = hl,
+			head_hi = hh,
+		}
+	end
+
+	log(LOG.TOOLTIP, string.format("%s: hit_power=%.3f, %d rounds", sec, hit_power, #rows))
+	return {
+		rows = ordered,
+	}
+end
+
+local function apply_column_headers(fields)
+	if not fields or not fields.col_labels then
+		return
+	end
+
+	local show_npc = CONFIG.column_headers == "npc"
+	local grp_torso = show_npc and "vs Torso (NPC %)" or "vs Torso (BRC)"
+	local grp_head = show_npc and "vs Head (NPC %)" or "vs Head (BRC)"
+
+	if fields.grp_torso then
+		fields.grp_torso:SetText(grp_torso)
+	end
+	if fields.grp_head then
+		fields.grp_head:SetText(grp_head)
+	end
+
+	for i = 1, NUM_TIERS do
+		local tier = BRC_TIERS[i]
+		local torso_label = show_npc and format_npc_armor_pct(tier.torso) or tostring(tier.brc_torso)
+		local head_label = show_npc and format_npc_armor_pct(tier.head) or tostring(tier.brc_head)
+		if fields.col_labels.torso[i] then
+			fields.col_labels.torso[i]:SetText(torso_label)
+		end
+		if fields.col_labels.head[i] then
+			fields.col_labels.head[i]:SetText(head_label)
+		end
+	end
+end
+
+local function set_damage_cell(wnd, cell, lo, hi)
+	if not wnd then
+		return
+	end
+	if cell then
+		wnd:SetText(cell.text)
+		wnd:SetTextColor(dmg_value_color(cell.dmg, lo, hi))
+	else
+		wnd:SetText("")
+		wnd:SetTextColor(CLR.value)
+	end
+end
+
+local function hide_damage_panel(info)
+	if not info.dorn_wpn_damage then
+		return
+	end
+
+	local fields = info.dorn_wpn_fields
+	if fields then
+		for _, row in ipairs(fields.rows) do
+			row.base:Show(false)
+		end
+	end
+
+	info.dorn_wpn_damage:Show(false)
+end
+
+-- Child fields are attached to their row's own base static, so their XML y is
+-- relative to the row (not the panel). Otherwise every row would draw at the
+-- same y and stack on top of each other. Only the dynamic number cells are kept
+-- as refs; static text lives in the XML and just needs to exist.
+local function init_row_fields(xml, dlg, row_path)
+	local base = xml:InitStatic(row_path, dlg)
+	local row = {
+		base = base,
+		type = xml:InitTextWnd(row_path .. ":type", base),
+		ap = xml:InitTextWnd(row_path .. ":ap", base),
+		torso = {},
+		head = {},
+	}
+	for i = 1, NUM_TIERS do
+		row.torso[i] = xml:InitTextWnd(row_path .. ":t" .. i, base)
+		row.head[i] = xml:InitTextWnd(row_path .. ":h" .. i, base)
+	end
+	return row
+end
+
+local COL_HDR_2 = { "type", "ap" }
+for i = 1, NUM_TIERS do
+	COL_HDR_2[#COL_HDR_2 + 1] = "t" .. i
+	COL_HDR_2[#COL_HDR_2 + 1] = "h" .. i
+end
+
+-- Read row pitch from the XML positions set at init (row_1/row_2). Panel height
+-- ends flush with the last visible data row.
+local function read_layout_metrics(fields)
+	local row1 = fields.rows[1].base
+	local row2 = fields.rows[2].base
+
+	local data_top_y = row1:GetWndPos().y
+	local row_step = row2:GetWndPos().y - data_top_y
+	local row_h = row1:GetHeight()
+
+	return {
+		data_top_y = data_top_y,
+		row_step = row_step,
+		row_h = row_h,
+	}
+end
+
+local function init_damage_panel(self)
+	local ok, dlg = pcall(function()
+		return DAMAGE_XML:InitStatic("panel", self.dialog)
+	end)
+	if not ok or not dlg then
+		return
+	end
+
+	local header = DAMAGE_XML:InitStatic("panel:header", dlg)
+	local col_hdr_2 = DAMAGE_XML:InitStatic("panel:col_hdr_2", dlg)
+
+	DAMAGE_XML:InitTextWnd("panel:header:title", header)
+	local grp_torso = DAMAGE_XML:InitTextWnd("panel:header:grp_torso", header)
+	local grp_head = DAMAGE_XML:InitTextWnd("panel:header:grp_head", header)
+	DAMAGE_XML:InitStatic("panel:sep", dlg)
+
+	local col_labels = { torso = {}, head = {} }
+	for _, name in ipairs(COL_HDR_2) do
+		if name:match("^t%d") then
+			col_labels.torso[tonumber(name:sub(2))] = DAMAGE_XML:InitTextWnd("panel:col_hdr_2:" .. name, col_hdr_2)
+		elseif name:match("^h%d") then
+			col_labels.head[tonumber(name:sub(2))] = DAMAGE_XML:InitTextWnd("panel:col_hdr_2:" .. name, col_hdr_2)
+		else
+			DAMAGE_XML:InitTextWnd("panel:col_hdr_2:" .. name, col_hdr_2)
+		end
+	end
+
+	local fields = {
+		header = header,
+		col_hdr_2 = col_hdr_2,
+		grp_torso = grp_torso,
+		grp_head = grp_head,
+		col_labels = col_labels,
+		rows = {},
+	}
+
+	for i, row_path in ipairs(ROW_XML) do
+		local row = init_row_fields(DAMAGE_XML, dlg, row_path)
+		row.base:Show(false)
+		fields.rows[i] = row
+	end
+
+	fields.layout = read_layout_metrics(fields)
+	apply_column_headers(fields)
+
+	self.dorn_wpn_damage = dlg
+	self.dorn_wpn_fields = fields
+	dlg:Show(false)
+end
+
+local function populate_damage_panel(info, data)
+	local fields = info.dorn_wpn_fields
+	if not info.dorn_wpn_damage or not fields or not data then
+		return
+	end
+
+	local layout = fields.layout
+	if not layout then
+		return
+	end
+
+	apply_column_headers(fields)
+
+	local any_row = false
+	local row_y = layout.data_top_y
+	local last_row_y = layout.data_top_y
+	for i, row in ipairs(fields.rows) do
+		local rd = data.rows[i]
+		if rd then
+			row.type:SetText(rd.type or "")
+			row.type:SetTextColor(CLR.white)
+			row.ap:SetText(rd.ap or "")
+			row.ap:SetTextColor(ap_display_color(rd.ap_val or 0))
+			for t = 1, NUM_TIERS do
+				set_damage_cell(row.torso[t], rd.torso and rd.torso[t], rd.torso_lo, rd.torso_hi)
+				set_damage_cell(row.head[t], rd.head and rd.head[t], rd.head_lo, rd.head_hi)
+			end
+			row.base:SetWndPos(vector2():set(0, row_y))
+			row.base:Show(true)
+			last_row_y = row_y
+			row_y = row_y + layout.row_step
+			any_row = true
+		else
+			row.base:Show(false)
+		end
+	end
+
+	if not any_row then
+		info.dorn_wpn_damage:Show(false)
+		return
+	end
+
+	local w = info.desc:GetWidth()
+	local panel_h = last_row_y + layout.row_h
+	info.dorn_wpn_damage:SetWndSize(vector2():set(w, panel_h))
+	info.dorn_wpn_damage:Show(true)
+end
+
+local function sync_damage_layout(info)
+	local tail = info.dorn_wpn_damage
+
+	info:Sync_Y(info.desc, info.dorn_wpn_damage, PANEL_TOP_OFFSET)
+
+	if info.stats_dialog:IsShown() then
+		info:Sync_Y(info.dorn_wpn_damage, info.stats_dialog, BOTTOM_OFFSET)
+		tail = info.stats_dialog
+		if info.ammo:IsShown() then
+			info:Sync_Y(info.stats_dialog, info.ammo, BOTTOM_OFFSET)
+			tail = info.ammo
+		end
+	end
+
+	info:Sync_H(tail, info.frame, BOTTOM_OFFSET)
+end
+
+local function refresh_weapon_damage_panel(info, obj, sec)
+	if not info or not info.dorn_wpn_damage then
+		return
+	end
+
+	hide_damage_panel(info)
+
+	if not info:IsShown() then
+		return
+	end
+
+	sec = sec or (obj and obj:section())
+	if not sec or info:GetType(sec) ~= "weapon" then
+		return
+	end
+
+	local damage_data = build_ammo_damage_rows(obj, sec)
+	if not damage_data then
+		return
+	end
+
+	populate_damage_panel(info, damage_data)
+	sync_damage_layout(info)
+end
+
+local base_itm_details_reset
+
+local function itm_details_reset_hook(self, obj)
+	if base_itm_details_reset then
+		base_itm_details_reset(self, obj)
+	end
+
+	if not obj or not self.item_info then
+		return
+	end
+
+	local info = self.item_info
+	if not info.dorn_wpn_damage then
+		init_damage_panel(info)
+	end
+
+	-- Details sheet reuses item_info; force a full refresh for the new context.
+	info.id = nil
+	info.section = nil
+	info:Update(obj, nil, {})
+end
+
+local function install_details_hook()
+	if not ui_itm_details or not ui_itm_details.UIItemSheet then
+		return
+	end
+
+	if not base_itm_details_reset then
+		base_itm_details_reset = ui_itm_details.UIItemSheet.Reset
+		ui_itm_details.UIItemSheet.Reset = itm_details_reset_hook
+	end
+end
+
+local function uiinfo_init_hook(self, owner, delay)
+	base_uiinfo_init(self, owner, delay)
+
+	tracked_infos[self] = true
+
+	if self.dorn_wpn_damage then
+		return
+	end
+
+	init_damage_panel(self)
+end
+
+local function uiinfo_update_hook(self, obj, sec, flags)
+	base_uiinfo_update(self, obj, sec, flags)
+	apply_hit_power_stat_color(self)
+	refresh_weapon_damage_panel(self, obj, sec)
+end
+
+local function install_ui_hooks()
+	if not utils_ui or not utils_ui.UIInfoItem then
+		return false
+	end
+
+	if not base_uiinfo_init then
+		base_uiinfo_init = utils_ui.UIInfoItem.__init
+		utils_ui.UIInfoItem.__init = uiinfo_init_hook
+	end
+
+	if not base_uiinfo_update then
+		base_uiinfo_update = utils_ui.UIInfoItem.Update
+		utils_ui.UIInfoItem.Update = uiinfo_update_hook
+	end
+
+	return true
+end
+
+local function on_console_execute(cmd)
+	if cmd == "g_game_difficulty" then
+		apply_damage_stat()
+	end
+end
+
+function on_game_start()
+	install_ui_hooks()
+	install_details_hook()
+
+	local loader = _G[DORN_COMMON_VERSION]
+	if loader then
+		DORN = loader.load(MOD_ID)
+	end
+
+	on_option_change()
+
+	RegisterScriptCallback("on_console_execute", on_console_execute)
+	RegisterScriptCallback("on_option_change", on_option_change)
+	log(LOG.LIFECYCLE, "loaded")
+end

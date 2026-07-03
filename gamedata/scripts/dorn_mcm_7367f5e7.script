@@ -1,0 +1,90 @@
+--[[
+	Dorn MCM — thin getters/setters over ui_mcm (namespace module, no globals).
+
+	Loaded via <mod_id>_common; use DORN.mcm from <mod_id>_common.get().
+]]
+
+local function path(mod_id, key)
+	return tostring(mod_id) .. "/" .. tostring(key)
+end
+
+function get(mod_id, key, default)
+	if ui_mcm then
+		local value = ui_mcm.get(path(mod_id, key))
+		if value ~= nil then
+			return value
+		end
+	end
+	return default
+end
+
+function set(mod_id, key, value)
+	if ui_mcm and ui_mcm.set then
+		ui_mcm.set(path(mod_id, key), value)
+	end
+end
+
+function bool(mod_id, key, default)
+	return get(mod_id, key, default) == true
+end
+
+function number(mod_id, key, default)
+	local value = get(mod_id, key, default)
+	if type(value) == "number" then
+		return value
+	end
+	local n = tonumber(value)
+	if n ~= nil then
+		return n
+	end
+	if type(default) == "number" then
+		return default
+	end
+	return 0
+end
+
+function string(mod_id, key, default)
+	local value = get(mod_id, key, default)
+	if value == nil then
+		return default
+	end
+	return tostring(value)
+end
+
+function key(mod_id, key, default)
+	local value = get(mod_id, key, default)
+	if value == nil or value == -1 then
+		return nil
+	end
+	return value
+end
+
+function range(mod_id, min_key, max_key, min_default, max_default, min_floor)
+	local min_val = number(mod_id, min_key, min_default)
+	local max_val = number(mod_id, max_key, max_default)
+	local floor_val = min_floor or 1
+
+	if max_val > 0 and min_val >= max_val then
+		min_val = math.max(floor_val, max_val - 1)
+	end
+
+	local result = {
+		min = min_val,
+		max = max_val,
+	}
+
+	function result:normalize(value)
+		if self.max <= 0 or self.max <= self.min then
+			return 0
+		end
+		if value < self.min then
+			return 0
+		end
+		if value >= self.max then
+			return 1
+		end
+		return (value - self.min) / (self.max - self.min)
+	end
+
+	return result
+end

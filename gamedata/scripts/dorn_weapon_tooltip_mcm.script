@@ -1,0 +1,84 @@
+function on_mcm_load()
+	return {
+		id = "dorn_weapon_tooltip",
+		text = "ui_mcm_menu_dorn_weapon_tooltip",
+		gr = {
+			{
+				id = "main",
+				sh = true,
+				text = "ui_mcm_dorn_weapon_tooltip_main_section",
+				gr = {
+					{
+						id = "damage_stat",
+						type = "list",
+						val = 0,
+						def = "hit_power",
+						hint = "dorn_weapon_tooltip_damage_stat",
+						content = {
+							{ "off", "off" },
+							{ "damage", "damage" },
+							{ "hit_power", "hit_power" },
+						},
+					},
+					{
+						id = "column_headers",
+						type = "list",
+						val = 0,
+						def = "brc",
+						hint = "dorn_weapon_tooltip_column_headers",
+						content = {
+							{ "brc", "brc" },
+							{ "npc", "npc" },
+						},
+					},
+				},
+			},
+			{
+				id = "info",
+				sh = true,
+				text = "ui_mcm_dorn_weapon_tooltip_info_section",
+				gr = {
+					{
+						id = "overview",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_overview",
+					},
+					{
+						id = "armor_columns",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_armor_columns",
+					},
+					{
+						id = "torso_tiers",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_torso_tiers",
+					},
+					{
+						id = "head_tiers",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_head_tiers",
+					},
+					{
+						id = "damage_calc",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_damage_calc",
+					},
+				},
+			},
+			{
+				id = "development",
+				sh = true,
+				text = "ui_mcm_dorn_weapon_tooltip_development_section",
+				gr = {
+					{
+						id = "debug_log",
+						type = "check",
+						val = 1,
+						def = false,
+						hint = "dorn_weapon_tooltip_debug_log",
+					},
+				},
+			},
+		},
+	}
+end
