@@ -32,7 +32,7 @@
 
 	1. damage_stat - re-enables the built-in damage stat slot that G.A.M.M.A.
 	   Accurate Defense Values comments out of ish_item_stats.script. Defaults
-	   to Hit Power; can be switched to the normalized Damage (Dmg) row or Off.
+	   to Hit Power (weapon hit_power as %); also Damage (Dmg), Damage (ammo), or Off.
 
 	2. column_headers - show GAMMA BRC tier (10-60) or NPC bone armor % in headers
 	   (labels only; each tier's damage uses its actor_armor_class NPC profile).
@@ -57,14 +57,8 @@ local LOG = {
 	TOOLTIP   = { order = 1, color = "cyan" },
 }
 
--- Damage is shown as hit_power * k_hit * 100 (x pellets for shotguns). That's
--- the intrinsic per-shot base in the engine's health-fraction units, scaled to a
--- readable percentage: GBOOBS computes a hit as
---   hit_power * k_hit * 1.1 * ammo_mult * [distance/bone/barrel/difficulty/...]
--- so hit_power * k_hit is the core term. We deliberately do NOT clamp it to
--- 0-100 and do NOT divide by 1.5 - real damage isn't clamped or normalized;
--- only the built-in stat *bar* does that (normalize(hit_power*k_hit, 0, 1.5)) to
--- fit a 0-100% progress bar, which is why that bar reads lower than the raw value.
+-- Hit Power is weapon hit_power x 100 (x pellets for shotguns), no ammo k_hit.
+-- Legacy Damage (Dmg) uses normalize(hit_power*k_hit, 0, 1.5) for the stat bar.
 local DAMAGE_SCALE = 100
 
 local BUCK_SELF = "ammo_12x70_buck_self"
@@ -228,32 +222,45 @@ local CLR = {
 	stat_neg = GetARGB(255, 200, 50, 50),
 }
 
--- Caps of the damage/hit-power row we inject (both MCM modes). The engine paints
--- stat values grey (clr_list p1); we recolor our row white after every update.
-local whiten_stat_labels_cache
-
-local function whiten_stat_labels()
-	if not whiten_stat_labels_cache then
-		whiten_stat_labels_cache = {
-			[game.translate_string("ui_dorn_wpn_hit_power")] = true,
-			[game.translate_string("ui_inv_damage")] = true,
-		}
+-- Caps of the optional damage stat row we inject. The engine paints stat values
+-- grey (clr_list p1); we recolor the label white after every tooltip update.
+local function active_damage_stat_gr()
+	if CONFIG.damage_stat == "off" then
+		return nil
 	end
-	return whiten_stat_labels_cache
+	return DAMAGE_STAT_BY_MODE[CONFIG.damage_stat]
 end
 
-local function apply_hit_power_stat_color(info)
+local function active_damage_stat_label()
+	local gr = active_damage_stat_gr()
+	if gr and gr.name then
+		return game.translate_string(gr.name)
+	end
+end
+
+local function apply_custom_stat_display(info, obj, sec)
 	if not info or not info.stats or CONFIG.damage_stat == "off" then
 		return
 	end
 
-	local labels = whiten_stat_labels()
+	local active_label = active_damage_stat_label()
+	local slash = (CONFIG.damage_stat == "ammo_torso" and obj and sec)
+		and format_ammo_torso_damage_slash(obj, sec)
+
 	for _, ele in pairs(info.stats) do
 		if ele.cap and ele.txt then
 			local cap = ele.cap:GetText()
-			if cap and labels[cap] then
+			if cap and active_label and cap == active_label then
 				ele.cap:SetTextColor(CLR.white)
-				ele.txt:SetTextColor(CLR.white)
+				if CONFIG.damage_stat == "ammo_torso" and slash then
+					ele.txt:SetText(slash)
+					ele.txt:SetTextColor(CLR.stat_pos)
+					ele.txt:Show(true)
+				elseif CONFIG.damage_stat == "hit_power" or CONFIG.damage_stat == "damage" then
+					ele.txt:SetTextColor(CLR.white)
+				else
+					ele.txt:SetTextColor(CLR.stat_pos)
+				end
 			end
 		end
 	end
@@ -317,9 +324,26 @@ local HIT_POWER_STAT = {
 	},
 }
 
+-- Legacy Damage (Dmg) per ammo type, AP-desc order: 72/58/41/33
+local AMMO_TORSO_STAT = {
+	index = 3,
+	typ = "float",
+	name = "ui_dorn_wpn_ammo_torso",
+	icon_p = "ui_wp_prop_damage",
+	icon_n = "",
+	track = false,
+	magnitude = 1,
+	unit = "",
+	compare = false,
+	sign = false,
+	show_always = true,
+	value_functor = { "zz_dorn_weapon_tooltip_main", "prop_ammo_torso_slash_flag" },
+}
+
 local DAMAGE_STAT_BY_MODE = {
 	damage = LEGACY_DAMAGE_STAT,
 	hit_power = HIT_POWER_STAT,
+	ammo_torso = AMMO_TORSO_STAT,
 }
 
 local function log(log_type, msg)
@@ -348,7 +372,10 @@ local function read_damage_stat_mode()
 	end
 
 	local mode = DORN.mcm.string(MOD_ID, "main/damage_stat", nil)
-	if mode == "off" or mode == "damage" or mode == "hit_power" then
+	if mode == "raw_hit_power" then
+		mode = "hit_power"
+	end
+	if mode == "off" or mode == "damage" or mode == "hit_power" or mode == "ammo_torso" then
 		return mode
 	end
 
@@ -420,6 +447,16 @@ local function ammo_hit_power(hit_power, k_hit)
 	return (hit_power ~= 0) and (k_hit * hit_power) or k_hit
 end
 
+-- One ammo's legacy Damage (Dmg) stat: normalize(hit_power*k_hit, 0, 1.5) x 100 x pellets.
+-- Matches ish_item_stats.scale_100_for_pellets, but per-ammo pellets (not max across all).
+local function legacy_ammo_dmg_value(hit_power, k_hit, ammo_sec)
+	local pellets = 1
+	if ammo_sec ~= BUCK_SELF then
+		pellets = ini_sys:r_float_ex(ammo_sec, "buck_shot") or 1
+	end
+	return math.floor(normalize(ammo_hit_power(hit_power, k_hit), 0, 1.5) * DAMAGE_SCALE) * pellets
+end
+
 -- Highest hit_power × k_hit across every ammo the gun accepts (excludes degraded rounds).
 local function max_ammo_hit_power(obj, sec)
 	local id = obj and obj:id()
@@ -442,7 +479,14 @@ local function max_ammo_hit_power(obj, sec)
 end
 
 function prop_hit_power(obj, sec)
-	return max_ammo_hit_power(obj, sec)
+	return gun_hit_power(obj, sec)
+end
+
+-- Sentinel so the stat row shows; display text is set in apply_custom_stat_display.
+function prop_ammo_torso_slash_flag(obj, sec)
+	if format_ammo_torso_damage_slash(obj, sec) then
+		return 1
+	end
 end
 
 -- Same as utils_ui.prop_damage but uses best ammo k_hit, not first in list.
@@ -581,7 +625,8 @@ local function calc_tier_damages(hit_power, k_hit, k_ap_ltx, air_res, headshot, 
 	return out
 end
 
-local function build_ammo_damage_rows(obj, sec)
+-- Unique ammo rounds for a weapon, AP-desc (same order as the damage table).
+local function collect_sorted_ammo_rounds(obj, sec, max_count)
 	local ammo_class = SYS_GetParam(0, sec, "ammo_class", "")
 	if not ammo_class or ammo_class == "" then
 		return nil
@@ -592,16 +637,6 @@ local function build_ammo_damage_rows(obj, sec)
 		return nil
 	end
 
-	local hit_power = gun_hit_power(obj, sec)
-	if hit_power <= 0 then
-		return nil
-	end
-
-	local pellets = max_pellets(ammo_list)
-	local pellet_mult = (pellets > 1) and pellets or 1
-	local diff_mult = get_difficulty_mult()
-
-	-- One row per unique ammo section (weapon ammo_class order, max ROW_XML).
 	local rounds = {}
 	local seen = {}
 
@@ -629,7 +664,6 @@ local function build_ammo_damage_rows(obj, sec)
 		return nil
 	end
 
-	-- Highest AP first; the row cap then keeps the most penetrating rounds.
 	table.sort(rounds, function(a, b)
 		if a.ap ~= b.ap then
 			return a.ap > b.ap
@@ -637,11 +671,34 @@ local function build_ammo_damage_rows(obj, sec)
 		return a.label < b.label
 	end)
 
+	if max_count and #rounds > max_count then
+		local capped = {}
+		for i = 1, max_count do
+			capped[i] = rounds[i]
+		end
+		return capped
+	end
+
+	return rounds
+end
+
+local function build_ammo_damage_rows(obj, sec)
+	local rounds = collect_sorted_ammo_rounds(obj, sec, #ROW_XML)
+	if not rounds then
+		return nil
+	end
+
+	local hit_power = gun_hit_power(obj, sec)
+	if hit_power <= 0 then
+		return nil
+	end
+
+	local pellets = max_pellets(utils_item.get_ammo(sec, obj and obj:id() or nil))
+	local pellet_mult = (pellets > 1) and pellets or 1
+	local diff_mult = get_difficulty_mult()
+
 	local rows = {}
 	for _, r in ipairs(rounds) do
-		if #rows >= #ROW_XML then
-			break
-		end
 		local torso = fmt_tier_cells(calc_tier_damages(
 			hit_power, r.k_hit, r.k_ap, r.air_res,
 			false, REF_DIST_M, diff_mult, pellet_mult
@@ -688,6 +745,29 @@ local function build_ammo_damage_rows(obj, sec)
 	return {
 		rows = ordered,
 	}
+end
+
+-- Per-ammo legacy Damage (Dmg) values, AP-desc (same order as the damage table).
+local function format_ammo_torso_damage_slash(obj, sec)
+	local rounds = collect_sorted_ammo_rounds(obj, sec, #ROW_XML)
+	if not rounds then
+		return nil
+	end
+
+	local hit_power = gun_hit_power(obj, sec)
+	if hit_power <= 0 then
+		return nil
+	end
+
+	local parts = {}
+	for _, r in ipairs(rounds) do
+		parts[#parts + 1] = tostring(legacy_ammo_dmg_value(hit_power, r.k_hit, r.sec))
+	end
+
+	if #parts == 0 then
+		return nil
+	end
+	return table.concat(parts, "/")
 end
 
 local function apply_column_headers(fields)
@@ -1055,7 +1135,15 @@ end
 local base_get_stats_xml
 
 local function build_white_stat_xml(handler, obj, sec, gr, stat)
-	local value, nclr = utils_ui.get_stats_string_value(obj, sec, gr, stat)
+	local value, nclr
+
+	if gr.name == "ui_dorn_wpn_ammo_torso" then
+		value = format_ammo_torso_damage_slash(obj, sec)
+		nclr = false
+	else
+		value, nclr = utils_ui.get_stats_string_value(obj, sec, gr, stat)
+	end
+
 	if not value then
 		return
 	end
@@ -1086,8 +1174,8 @@ local function get_stats_xml_hook(handler, obj, sec, gr, stat)
 	end
 
 	if grp and not grp.track and grp.name and CONFIG.damage_stat ~= "off" then
-		local labels = whiten_stat_labels()
-		if labels[game.translate_string(grp.name)] then
+		local active_label = active_damage_stat_label()
+		if active_label and game.translate_string(grp.name) == active_label then
 			local ok, st = pcall(build_white_stat_xml, handler, obj, sec, grp, stat)
 			if ok and st then
 				return st
@@ -1161,7 +1249,7 @@ end
 
 local function uiinfo_update_hook(self, obj, sec, flags)
 	base_uiinfo_update(self, obj, sec, flags)
-	apply_hit_power_stat_color(self)
+	apply_custom_stat_display(self, obj, sec)
 	refresh_weapon_damage_panel(self, obj, sec)
 end
 

@@ -2,7 +2,7 @@
 	<!-- Layout: all y/height values live here. Edit header, col_hdr_2, sep, row_1/row_2
 	     (step = row_2.y - row_1.y), row_4 — script reads these at init and repacks
 	     data rows when some are hidden. -->
-	<panel x="12" y="0" width="352" height="122" stretch="1">
+	<panel x="8" y="0" width="352" height="122" stretch="1">
 		<!-- Section header: DAMAGE + group labels on one row -->
 		<header x="0" y="0" width="352" height="18" stretch="1">
 			<title x="0" y="0" width="56" height="14" stretch="1">
