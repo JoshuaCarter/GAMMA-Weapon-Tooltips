@@ -61,7 +61,10 @@
 	<string id="ui_mcm_dorn_weapon_tooltip_column_headers">
 		<text>Damage column headers</text>
 	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_debug_overlay">
+		<text>Enable debug overlay</text>
+	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_debug_log">
-		<text>Debug logging (on-screen)</text>
+		<text>Enable debug logging</text>
 	</string>
 </string_table>

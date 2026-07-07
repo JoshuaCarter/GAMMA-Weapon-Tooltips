@@ -41,7 +41,7 @@
 ]]
 
 local MOD_ID = "dorn_weapon_tooltip"
-local DORN_COMMON_VERSION = "dorn_common_7367f5e7" -- managed by sync-dorn-common.sh, do not hand-edit
+local DORN_COMMON_VERSION = "dorn_common_3ea88f51" -- managed by sync-dorn-common.sh, do not hand-edit
 
 local DORN
 
@@ -50,6 +50,7 @@ local CONFIG = {
 	damage_stat = "hit_power",
 	column_headers = "brc",
 	debug_log = false,
+	debug_overlay = false,
 }
 
 local LOG = {
@@ -332,9 +333,15 @@ DAMAGE_STAT_BY_MODE = {
 }
 
 local function log(log_type, msg)
-	if DORN and DORN.dbg and CONFIG.debug_log then
-		local slot = log_type or LOG.TOOLTIP
-		DORN.dbg.write(MOD_ID, slot.order, "[WeaponTooltip] " .. tostring(msg), slot.color)
+	if not (DORN and DORN.dbg) then
+		return
+	end
+	local slot = log_type or LOG.TOOLTIP
+	if CONFIG.debug_overlay then
+		DORN.dbg.overlay(MOD_ID, slot.order, "[WeaponTooltip] " .. tostring(msg), slot.color)
+	end
+	if CONFIG.debug_log then
+		DORN.dbg.log(MOD_ID, tostring(msg))
 	end
 end
 
@@ -399,10 +406,11 @@ local function on_option_change()
 			CONFIG.column_headers = "brc"
 		end
 		CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
+		CONFIG.debug_overlay = DORN.mcm.bool(MOD_ID, "development/debug_overlay", false)
 	end
 
 	if DORN and DORN.dbg then
-		DORN.dbg.set_enabled(MOD_ID, CONFIG.debug_log)
+		DORN.dbg.set_enabled(MOD_ID, CONFIG.debug_overlay)
 	end
 
 	apply_damage_stat()
