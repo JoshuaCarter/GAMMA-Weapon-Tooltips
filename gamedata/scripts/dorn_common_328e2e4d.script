@@ -1,9 +1,9 @@
 --[[
-	Dorn common loader for commit 02fd8ab5.
+	Dorn common loader for commit 328e2e4d.
 
-	Synced verbatim (only 02fd8ab5 is substituted) alongside
-	dorn_mcm_02fd8ab5 / dorn_dbg_02fd8ab5 / dorn_sys_02fd8ab5 as
-	dorn_common_02fd8ab5.script. X-Ray auto-loads every .script file in
+	Synced verbatim (only 328e2e4d is substituted) alongside
+	dorn_mcm_328e2e4d / dorn_dbg_328e2e4d / dorn_sys_328e2e4d as
+	dorn_common_328e2e4d.script. X-Ray auto-loads every .script file in
 	gamedata/scripts at boot, so this and its 3 siblings are already loaded
 	globals by the time any mod's on_game_start() runs — no process_file()
 	call needed (or safe: calling process_file() from a script that's
@@ -14,7 +14,7 @@
 	Usage from a mod's _main.script:
 
 		local MOD_ID = "dorn_prone_fix"
-		local DORN_COMMON_VERSION = "dorn_common_02fd8ab5" -- managed by sync-dorn-common.sh, do not hand-edit
+		local DORN_COMMON_VERSION = "dorn_common_328e2e4d" -- managed by sync-dorn-common.sh, do not hand-edit
 
 		local DORN
 
@@ -30,7 +30,7 @@
 	auto-loaded files isn't guaranteed there.
 ]]
 
-local SUFFIX = "_02fd8ab5"
+local SUFFIX = "_328e2e4d"
 
 function load(mod_id)
 	local mcm = _G["dorn_mcm" .. SUFFIX]
@@ -41,6 +41,6 @@ function load(mod_id)
 		sys.reset_mod(mod_id)
 		dbg.clear_source(mod_id)
 	end
-	printf("[DORN] %s: common loaded (commit 02fd8ab5)", tostring(mod_id))
+	printf("[DORN] %s: common loaded (commit 328e2e4d)", tostring(mod_id))
 	return { mcm = mcm, dbg = dbg, sys = sys }
 end

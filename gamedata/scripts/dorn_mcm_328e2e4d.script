@@ -5,7 +5,7 @@
 	BANNER_LINK is substituted to dorn_mcm_banner_<commit> at sync time.
 ]]
 
-local BANNER_LINK = "dorn_mcm_banner_02fd8ab5"
+local BANNER_LINK = "dorn_mcm_banner_328e2e4d"
 local MODS_LIST_LINK = "github.com/JoshuaCarter/GAMMA-Mods"
 local MODS_LIST_CLR = nil
 
