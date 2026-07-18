@@ -1,9 +1,9 @@
 <dorn_wpn>
 	<!-- Layout: all y/height values live here. Edit header, col_hdr_2,
-	     row_1/row_2 (step = row_2.y - row_1.y), row_4 — script reads these at
+	     row_1/row_2 (step = row_2.y - row_1.y), row_4 - script reads these at
 	     init and repacks data rows when some are hidden.
 	     Columns: Type, AP, torso Min/Lgt/Lgt+/Mid/Mid+/Hvy/Hvy+/Exo/Max,
-	     head Min/Lgt/Mid/Hvy/Max. Torso step 18 from x=58; head from x=230. Type width 34; AP at x=34 width 24 (room for 3-digit AP) (AMMO_TYPE_SHORT ≤6 chars). -->
+	     head Min/Lgt/Mid/Hvy/Max. Torso step 18 from x=58; head from x=230. Type width 34; AP at x=34 width 24 (room for 3-digit AP) (AMMO_TYPE_SHORT <=6 chars). -->
 	<panel x="15" y="0" width="350" height="122" stretch="1">
 		<!-- Section header: DAMAGE + group labels on one row -->
 		<header x="0" y="0" width="350" height="18" stretch="1">

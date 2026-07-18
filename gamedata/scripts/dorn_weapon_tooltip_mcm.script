@@ -86,13 +86,6 @@ function on_mcm_load()
 							{ "after", "after" },
 						},
 					},
-					{
-						id = "show_weapon_condition",
-						type = "check",
-						val = 1,
-						def = true,
-						hint = "dorn_weapon_tooltip_show_weapon_condition",
-					},
 					{ id = "line_general", type = "line" },
 					{
 						id = "hdr_damage_table",
@@ -242,13 +235,6 @@ function on_mcm_load()
 						val = 1,
 						def = true,
 						hint = "dorn_weapon_tooltip_show_reliability",
-					},
-					{
-						id = "show_weapon_wear",
-						type = "check",
-						val = 1,
-						def = true,
-						hint = "dorn_weapon_tooltip_show_weapon_wear",
 					},
 					{
 						id = "show_barrel_wear",

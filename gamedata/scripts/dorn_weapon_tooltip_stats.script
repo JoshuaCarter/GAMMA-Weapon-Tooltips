@@ -1,6 +1,6 @@
 --[[
 	Extra weapon stat rows for Dorn's Weapon Tooltip (Dispersion, Base Spread,
-	Move Spread, Weapon Wear, Barrel Wear, Burst Size, Bullet Drop). Loaded before
+	Move Spread, Barrel Wear, Burst Size, Bullet Drop). Loaded before
 	zz_dorn_weapon_tooltip_main, which registers them in utils_ui.stats_table.
 
 	X-Ray binds this file's environment to global dorn_weapon_tooltip_stats.
@@ -50,12 +50,18 @@ function set_burst_threshold(deg)
 	RECOIL_KICK_THRESHOLD = n
 end
 
+-- When true, attached silencer LTX *_k modifiers apply to Burst Size.
+local APPLY_SILENCER = false
+
+function set_apply_silencer(enabled)
+	APPLY_SILENCER = enabled == true
+end
+
 -- String ids for the new rows (also used by main for white-text display).
 NAME = {
 	dispersion = "ui_dorn_wpn_dispersion",
 	base_spread = "ui_dorn_wpn_base_spread",
 	movement_spread = "ui_dorn_wpn_movement_spread",
-	weapon_wear = "ui_dorn_wpn_weapon_wear",
 	barrel_wear = "ui_dorn_wpn_barrel_wear",
 	burst_control = "ui_dorn_wpn_burst_control",
 	bullet_drop = "ui_dorn_wpn_bullet_drop",
@@ -162,6 +168,20 @@ local function wpn_param(obj, sec, key, default)
 	end
 
 	return tonumber(SYS_GetParam(0, sec, key, tostring(default))) or default
+end
+
+-- Attached silencer section when MCM apply_silencer_stats is on; else nil.
+local function attached_silencer_sec(obj)
+	if not APPLY_SILENCER or not obj or not utils_item or not utils_item.get_attached_silencer then
+		return nil
+	end
+	local ok, sil = pcall(function()
+		return utils_item.get_attached_silencer(obj)
+	end)
+	if ok and sil and sil ~= "" then
+		return sil
+	end
+	return nil
 end
 
 local function resolve_sec(obj, sec)
@@ -290,64 +310,30 @@ function text_movement_spread(obj, sec)
 	return fmt_deg(run)
 end
 
--- Flat weapon-condition loss % per shot (mean across ammo if impair differs). Lower is better.
-function value_weapon_wear(obj, sec)
-	sec = resolve_sec(obj, sec)
-	if not is_weapon_section(sec) then
-		return nil
-	end
-	local dec = wpn_param(obj, sec, "condition_shot_dec", 0)
-	if dec < 0 then
-		dec = 0
-	end
-
-	local id = safe_id(obj)
-	local ammo_list = utils_item.get_ammo(sec, id)
-	local sum = 0
-	local n = 0
-	if ammo_list then
-		for _, ammo_sec in ipairs(ammo_list) do
-			if ini_sys:section_exist(ammo_sec)
-				and ammo_sec:sub(-8) ~= "_verybad"
-				and ammo_sec:sub(-4) ~= "_bad" then
-				local impair = ini_sys:r_float_ex(ammo_sec, "impair") or 1
-				sum = sum + dec * impair
-				n = n + 1
-			end
-		end
-	end
-	if n == 0 then
-		sum = dec
-		n = 1
-	end
-
-	return (sum / n) * 100
-end
-
-function text_weapon_wear(obj, sec)
-	local avg_pct = value_weapon_wear(obj, sec)
-	if avg_pct == nil then
-		return nil
-	end
-	if avg_pct <= 0 then
-		log_once("wear_zero:" .. tostring(sec), string.format(
-			"weapon_wear [%s]: 0%%", tostring(sec)))
-		return "0%"
-	end
-	if avg_pct < 0.1 then
-		return string.format("%.2f%%", avg_pct)
-	end
-	if avg_pct < 10 then
-		return string.format("%.1f%%", avg_pct)
-	end
-	return string.format("%.0f%%", avg_pct)
-end
-
--- Chance % per shot to lose 1% barrel (while cond < 85%). Lower is better.
+-- Chance % per shot to lose 1% WPO barrel. Matches GAMMA Unjam Reload
+-- arti_jamming barrel roll: weapon_degradation * condition_shot_dec * 15000
+-- out of 1000 (independent of the separate non-barrel part roll). Lower is better.
+-- Silencer does not affect this.
 function value_barrel_wear(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
+	end
+	if obj and arti_jamming and arti_jamming.has_parts and not arti_jamming.has_parts(obj) then
+		return nil
+	end
+	-- Unjam Reload only applies wear rolls while under MCM threshold (default 85).
+	local thr = 85
+	if a_arti_jamming_mcm and a_arti_jamming_mcm.get_config then
+		thr = tonumber(a_arti_jamming_mcm.get_config("threshold")) or 85
+	end
+	if obj and obj.condition then
+		local ok, cond = pcall(function()
+			return obj:condition()
+		end)
+		if ok and cond and (cond * 100) >= thr then
+			return 0
+		end
 	end
 	local dec = wpn_param(obj, sec, "condition_shot_dec", 0)
 	if dec < 0 then
@@ -356,6 +342,9 @@ function value_barrel_wear(obj, sec)
 	local deg = 0.5
 	if game_difficulties and game_difficulties.get_eco_factor then
 		deg = tonumber(game_difficulties.get_eco_factor("weapon_degradation")) or 0.5
+	end
+	if deg < 0 then
+		deg = 0
 	end
 	-- damage_chance / 1000 * 100 = damage_chance / 10
 	return (deg * dec * 15000) / 10
@@ -366,12 +355,15 @@ function text_barrel_wear(obj, sec)
 	if chance_pct == nil then
 		return nil
 	end
+	local chance_txt
 	if chance_pct <= 0 then
 		log_once("barrel_wear_zero:" .. tostring(sec), string.format(
 			"barrel_wear [%s]: 0%%", tostring(sec)))
-		return "0.00%"
+		chance_txt = "0.0%"
+	else
+		chance_txt = string.format("%.1f%%", chance_pct)
 	end
-	return string.format("%.2f%%", chance_pct)
+	return string.format("%s %%c[dark_gray]@ -1%%%c[default]", chance_txt)
 end
 
 -- Fractional ADS shots until cumulative vertical camera climb reaches RECOIL_KICK_THRESHOLD.
@@ -393,9 +385,22 @@ function value_burst_control(obj, sec)
 	end
 	local zoom_disp = wpn_param(obj, sec, "zoom_cam_dispersion", 0)
 	local hip_disp = wpn_param(obj, sec, "cam_dispersion", 0)
-	local disp = zoom_disp
-	if disp <= 0 then
-		disp = hip_disp
+	local use_zoom = zoom_disp > 0
+	local disp = use_zoom and zoom_disp or hip_disp
+	-- Silencer reduces cam kick via zoom_cam_dispersion_k / cam_dispersion_k.
+	local sil = attached_silencer_sec(obj)
+	if sil then
+		local cam_k = 1
+		if use_zoom then
+			cam_k = ini_float(sil, "zoom_cam_dispersion_k")
+				or ini_float(sil, "cam_dispersion_k")
+				or 1
+		else
+			cam_k = ini_float(sil, "cam_dispersion_k") or 1
+		end
+		if cam_k > 0 then
+			disp = disp * cam_k
+		end
 	end
 	local max_shots = 200
 	if disp <= 0 then
@@ -408,6 +413,17 @@ function value_burst_control(obj, sec)
 	if inc == 0 then
 		inc = wpn_param(obj, sec, "cam_dispersion_inc", 0)
 	end
+	-- Prefer zoom_cam_dispersion_inc_k; fall back to cam_dispersion_inc_k.
+	local inc_k = 1
+	if sil then
+		inc_k = ini_float(sil, "zoom_cam_dispersion_inc_k")
+			or ini_float(sil, "cam_dispersion_inc_k")
+			or 1
+		if inc_k <= 0 then
+			inc_k = 1
+		end
+	end
+	inc = inc * inc_k
 	local thr = RECOIL_KICK_THRESHOLD
 
 	local return_on = true
@@ -509,7 +525,6 @@ local TEXT_BY_NAME = {
 	[NAME.dispersion] = text_dispersion,
 	[NAME.base_spread] = text_base_spread,
 	[NAME.movement_spread] = text_movement_spread,
-	[NAME.weapon_wear] = text_weapon_wear,
 	[NAME.barrel_wear] = text_barrel_wear,
 	[NAME.burst_control] = text_burst_control,
 	[NAME.bullet_drop] = text_bullet_drop,
@@ -519,7 +534,6 @@ local VALUE_BY_NAME = {
 	[NAME.dispersion] = value_dispersion,
 	[NAME.base_spread] = value_base_spread,
 	[NAME.movement_spread] = value_movement_spread,
-	[NAME.weapon_wear] = value_weapon_wear,
 	[NAME.barrel_wear] = value_barrel_wear,
 	[NAME.burst_control] = value_burst_control,
 	[NAME.bullet_drop] = value_bullet_drop,
@@ -530,7 +544,6 @@ local LOWER_BETTER = {
 	[NAME.dispersion] = true,
 	[NAME.base_spread] = true,
 	[NAME.movement_spread] = true,
-	[NAME.weapon_wear] = true,
 	[NAME.barrel_wear] = true,
 	[NAME.burst_control] = false,
 	[NAME.bullet_drop] = true,
@@ -541,8 +554,7 @@ local ROUND_DECIMALS = {
 	[NAME.dispersion] = 2,
 	[NAME.base_spread] = 2,
 	[NAME.movement_spread] = 2,
-	[NAME.weapon_wear] = 2,
-	[NAME.barrel_wear] = 2,
+	[NAME.barrel_wear] = 1,
 	[NAME.burst_control] = 1,
 	[NAME.bullet_drop] = 2,
 }
@@ -567,7 +579,6 @@ local STAT_SHORT = {
 	[NAME.dispersion] = "dispersion",
 	[NAME.base_spread] = "base_spread",
 	[NAME.movement_spread] = "move_spread",
-	[NAME.weapon_wear] = "weapon_wear",
 	[NAME.barrel_wear] = "barrel_wear",
 	[NAME.burst_control] = "burst_control",
 	[NAME.bullet_drop] = "bullet_drop",

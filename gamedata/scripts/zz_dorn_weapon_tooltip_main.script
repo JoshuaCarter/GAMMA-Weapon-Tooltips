@@ -1,5 +1,5 @@
 --[[
-	Dorn's Weapon Tooltip — per-ammo damage table + enhanced weapon stats.
+	Dorn's Weapon Tooltip - per-ammo damage table + enhanced weapon stats.
 
 	Layout/static text: ui_dorn_weapon_tooltip.xml. This script fills cells and
 	wires MCM / utils_ui.stats_table.
@@ -15,7 +15,6 @@ local DORN
 
 local CONFIG = {
 	show_damage_table = true,
-	show_weapon_condition = true,
 	show_hit_power = true,
 	show_stalker_damage = true,
 	show_mutant_damage = true,
@@ -29,19 +28,18 @@ local CONFIG = {
 	show_base_spread = true,
 	show_dispersion = true,
 	show_movement_spread = true,
-	show_weapon_wear = true,
 	show_barrel_wear = true,
 	show_burst_control = true,
 	show_bullet_drop = true,
 	stat_row_placement = "inline",
 	column_headers = "names",
 	ammo_order = "default",
-	calc_range_m = 20,
+	calc_range_m = 30,
 	pellet_hit_pct = 100,
 	use_condition_table = false,
 	use_condition_stats = false,
-	apply_silencer_table = true,
-	apply_silencer_stats = true,
+	apply_silencer_table = false,
+	apply_silencer_stats = false,
 	debug_log = false,
 	debug_overlay = false,
 }
@@ -64,7 +62,6 @@ local EXTRA_STAT_NAME = {
 	dispersion = "ui_dorn_wpn_dispersion",
 	base_spread = "ui_dorn_wpn_base_spread",
 	movement_spread = "ui_dorn_wpn_movement_spread",
-	weapon_wear = "ui_dorn_wpn_weapon_wear",
 	barrel_wear = "ui_dorn_wpn_barrel_wear",
 	burst_control = "ui_dorn_wpn_burst_control",
 	bullet_drop = "ui_dorn_wpn_bullet_drop",
@@ -83,7 +80,7 @@ local AP_SCALE = 1000
 local AP_COLOR_ARMOR = 0.650
 local AP_COLOR_AP_SCALE = 0.7000 -- Max-tier outfit ap_scale average
 local AP_COLOR_REF_AIR = 0.05
-local REF_DIST_M = 20
+local REF_DIST_M = 30
 
 -- Named NPC bone-armor columns from visual profiles (see npc_visual_armor_reference.md).
 -- Only named floats are shown; rare 1-2 profile cliffs (0.125/0.300/0.350/0.430) are skipped.
@@ -354,7 +351,6 @@ local function refresh_enhanced_stat_labels()
 		base_spread = game.translate_string("ui_dorn_wpn_base_spread"),
 		dispersion = game.translate_string("ui_dorn_wpn_dispersion"),
 		movement_spread = game.translate_string("ui_dorn_wpn_movement_spread"),
-		weapon_wear = game.translate_string("ui_dorn_wpn_weapon_wear"),
 		barrel_wear = game.translate_string("ui_dorn_wpn_barrel_wear"),
 		burst_control = game.translate_string("ui_dorn_wpn_burst_control"),
 		bullet_drop = game.translate_string("ui_dorn_wpn_bullet_drop"),
@@ -385,9 +381,6 @@ local function custom_stat_text(cap, obj, sec)
 	if CONFIG.show_movement_spread and cap == ENHANCED_STAT_LABELS.movement_spread then
 		return S.text_for_name(N.movement_spread, obj, sec)
 	end
-	if CONFIG.show_weapon_wear and cap == ENHANCED_STAT_LABELS.weapon_wear then
-		return S.text_for_name(N.weapon_wear, obj, sec)
-	end
 	if CONFIG.show_barrel_wear and cap == ENHANCED_STAT_LABELS.barrel_wear then
 		return S.text_for_name(N.barrel_wear, obj, sec)
 	end
@@ -415,9 +408,6 @@ local function companion_name_id_for_cap(cap)
 	end
 	if cap == L.movement_spread then
 		return N.movement_spread
-	end
-	if cap == L.weapon_wear then
-		return N.weapon_wear
 	end
 	if cap == L.barrel_wear then
 		return N.barrel_wear
@@ -691,13 +681,10 @@ local STALKER_DAMAGE_STAT = {
 -- Cached non-Dorn base rows so MCM can hide/restore them.
 local saved_base_stats = {}
 
-local function is_dorn_stat_def(gr)
-	return gr and gr.name and string.find(gr.name, "ui_dorn_wpn_", 1, true) == 1
-end
-
 local function cache_base_stat(weapon_stats, key)
 	local cur = weapon_stats[key]
-	if cur and not is_dorn_stat_def(cur) then
+	-- Skip our own ui_dorn_wpn_* rows when caching vanilla base defs.
+	if cur and not (cur.name and string.find(cur.name, "ui_dorn_wpn_", 1, true) == 1) then
 		saved_base_stats[key] = cur
 	end
 end
@@ -795,9 +782,8 @@ local function placement_indices(weapon_stats)
 			base_spread = base + 5,
 			movement_spread = base + 6,
 			bullet_drop = base + 7,
-			weapon_wear = base + 8,
-			barrel_wear = base + 9,
-			burst_control = base + 10,
+			barrel_wear = base + 8,
+			burst_control = base + 9,
 		}
 	end
 
@@ -818,8 +804,7 @@ local function placement_indices(weapon_stats)
 			base_spread = 0.5,
 			movement_spread = 0.6,
 			bullet_drop = 0.7,
-			weapon_wear = 0.8,
-			barrel_wear = 0.85,
+			barrel_wear = 0.8,
 			burst_control = 0.9,
 		}
 	end
@@ -827,8 +812,6 @@ local function placement_indices(weapon_stats)
 	-- Inline: companions after related base; damage trio still first.
 	local disp_idx, spread_idx = inline_companion_pair(
 		"accuracy", CONFIG.show_accuracy, CONFIG.show_dispersion, CONFIG.show_base_spread)
-	local wear_idx, barrel_idx = inline_companion_pair(
-		"reliability", CONFIG.show_reliability, CONFIG.show_weapon_wear, CONFIG.show_barrel_wear)
 	return {
 		hit_power = dmg.hit_power,
 		stalker_damage = dmg.stalker_damage,
@@ -837,8 +820,7 @@ local function placement_indices(weapon_stats)
 		base_spread = spread_idx,
 		movement_spread = inline_companion_index("handling", CONFIG.show_handling),
 		bullet_drop = inline_companion_index("speed", CONFIG.show_muzzle_velocity),
-		weapon_wear = wear_idx,
-		barrel_wear = barrel_idx,
+		barrel_wear = inline_companion_index("reliability", CONFIG.show_reliability),
 		burst_control = inline_companion_index("recoil", CONFIG.show_recoil),
 	}
 end
@@ -902,9 +884,6 @@ local function apply_enhanced_weapon_stats()
 		or nil
 	weapon_stats["dorn_bullet_drop"] = CONFIG.show_bullet_drop
 		and make_dorn_row(idx.bullet_drop, N.bullet_drop, "ui_wp_prop_nastilnost", "prop_bullet_drop")
-		or nil
-	weapon_stats["dorn_weapon_wear"] = CONFIG.show_weapon_wear
-		and make_dorn_row(idx.weapon_wear, N.weapon_wear, "ui_wp_prop_nadezhnost", "prop_weapon_wear")
 		or nil
 	weapon_stats["dorn_barrel_wear"] = CONFIG.show_barrel_wear
 		and make_dorn_row(idx.barrel_wear, N.barrel_wear, "ui_wp_prop_nadezhnost", "prop_barrel_wear")
@@ -971,7 +950,7 @@ end
 local EXTRA_STAT_LEGACY = {
 	show_base_spread = "show_append_accuracy",
 	show_movement_spread = "show_append_handling",
-	show_weapon_wear = "show_append_reliability",
+	show_barrel_wear = "show_append_reliability",
 	show_burst_control = "show_append_recoil",
 	show_bullet_drop = "show_append_muzzle_velocity",
 }
@@ -1047,10 +1026,6 @@ local function log_item_once(reason, sec, msg)
 end
 
 -- Once per tooltip open (cleared when the hovered item changes).
-local function begin_tooltip_logs()
-	tooltip_logged = {}
-end
-
 local function log_tooltip(key, msg)
 	if not CONFIG.debug_log then
 		return
@@ -1074,7 +1049,6 @@ local function on_option_change()
 	local prev_debug = CONFIG.debug_log
 	if DORN and DORN.mcm then
 		CONFIG.show_damage_table = DORN.mcm.bool(MOD_ID, "main/show_damage_table", true)
-		CONFIG.show_weapon_condition = DORN.mcm.bool(MOD_ID, "main/show_weapon_condition", true)
 		CONFIG.show_hit_power = read_new_stat_flag("show_hit_power")
 		CONFIG.show_stalker_damage = read_new_stat_flag("show_stalker_damage")
 		CONFIG.show_mutant_damage = read_new_stat_flag("show_mutant_damage")
@@ -1088,7 +1062,6 @@ local function on_option_change()
 		CONFIG.show_base_spread = read_extra_stat_flag("show_base_spread")
 		CONFIG.show_dispersion = read_extra_stat_flag("show_dispersion")
 		CONFIG.show_movement_spread = read_extra_stat_flag("show_movement_spread")
-		CONFIG.show_weapon_wear = read_extra_stat_flag("show_weapon_wear")
 		CONFIG.show_barrel_wear = read_extra_stat_flag("show_barrel_wear")
 		CONFIG.show_burst_control = read_extra_stat_flag("show_burst_control")
 		CONFIG.show_bullet_drop = read_extra_stat_flag("show_bullet_drop")
@@ -1118,7 +1091,7 @@ local function on_option_change()
 		else
 			CONFIG.stat_row_placement = "inline"
 		end
-		CONFIG.calc_range_m = clamp(DORN.mcm.number(MOD_ID, "main/calc_range", 20), 0, 200)
+		CONFIG.calc_range_m = clamp(DORN.mcm.number(MOD_ID, "main/calc_range", 30), 0, 200)
 		CONFIG.pellet_hit_pct = clamp(DORN.mcm.number(MOD_ID, "main/pellet_hit_pct", 100), 1, 100)
 		local drop_range = clamp(DORN.mcm.number(MOD_ID, "main/drop_range", 200), 100, 2000)
 		if dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.set_drop_range then
@@ -1131,19 +1104,22 @@ local function on_option_change()
 		CONFIG.use_condition_table = DORN.mcm.bool(MOD_ID, "main/use_condition_table", false)
 		CONFIG.use_condition_stats = DORN.mcm.bool(MOD_ID, "main/use_condition_stats", false)
 		-- Split from legacy main/apply_silencer (same default for both when unset).
-		local sil_legacy = true
+		local sil_legacy = false
 		if DORN.mcm.get(MOD_ID, "main/apply_silencer") ~= nil then
-			sil_legacy = DORN.mcm.bool(MOD_ID, "main/apply_silencer", true)
+			sil_legacy = DORN.mcm.bool(MOD_ID, "main/apply_silencer", false)
 		end
 		if DORN.mcm.get(MOD_ID, "main/apply_silencer_table") ~= nil then
-			CONFIG.apply_silencer_table = DORN.mcm.bool(MOD_ID, "main/apply_silencer_table", true)
+			CONFIG.apply_silencer_table = DORN.mcm.bool(MOD_ID, "main/apply_silencer_table", false)
 		else
 			CONFIG.apply_silencer_table = sil_legacy
 		end
 		if DORN.mcm.get(MOD_ID, "main/apply_silencer_stats") ~= nil then
-			CONFIG.apply_silencer_stats = DORN.mcm.bool(MOD_ID, "main/apply_silencer_stats", true)
+			CONFIG.apply_silencer_stats = DORN.mcm.bool(MOD_ID, "main/apply_silencer_stats", false)
 		else
 			CONFIG.apply_silencer_stats = sil_legacy
+		end
+		if dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.set_apply_silencer then
+			dorn_weapon_tooltip_stats.set_apply_silencer(CONFIG.apply_silencer_stats)
 		end
 		CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
 		CONFIG.debug_overlay = DORN.mcm.bool(MOD_ID, "development/debug_overlay", false)
@@ -1174,8 +1150,8 @@ local function on_option_change()
 	end
 
 	log_once("config", string.format(
-		"config: table=%s wpn_cond=%s hit=%s stalker=%s mutant=%s base=%s/%s/%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s/%s/%s place=%s headers=%s order=%s range=%s pellet%%=%s cond=%s/%s sil=%s/%s",
-		tostr(CONFIG.show_damage_table), tostr(CONFIG.show_weapon_condition), tostr(CONFIG.show_hit_power),
+		"config: table=%s hit=%s stalker=%s mutant=%s base=%s/%s/%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s/%s place=%s headers=%s order=%s range=%s pellet%%=%s cond=%s/%s sil=%s/%s",
+		tostr(CONFIG.show_damage_table), tostr(CONFIG.show_hit_power),
 		tostr(CONFIG.show_stalker_damage), tostr(CONFIG.show_mutant_damage),
 		tostr(CONFIG.show_accuracy), tostr(CONFIG.show_handling),
 		tostr(CONFIG.show_fire_rate), tostr(CONFIG.show_mag_size),
@@ -1183,7 +1159,7 @@ local function on_option_change()
 		tostr(CONFIG.show_reliability), tostr(CONFIG.show_recoil),
 		tostr(CONFIG.show_dispersion), tostr(CONFIG.show_base_spread),
 		tostr(CONFIG.show_movement_spread),
-		tostr(CONFIG.show_weapon_wear), tostr(CONFIG.show_barrel_wear),
+		tostr(CONFIG.show_barrel_wear),
 		tostr(CONFIG.show_burst_control),
 		tostr(CONFIG.show_bullet_drop), tostr(CONFIG.stat_row_placement),
 		tostr(CONFIG.column_headers), tostr(CONFIG.ammo_order),
@@ -1219,15 +1195,57 @@ local function safe_section(obj)
 	return nil
 end
 
+-- Weapon hit_power (first float if LTX is a comma list). Avoid get_wpn_param's
+-- false 0 the same way dorn_weapon_tooltip_stats.wpn_param does for other floats.
 local function gun_hit_power(obj, sec)
+	-- CQC grok_bo: TOZ-106 family uses fixed hit_power 0.8 (not LTX).
+	if sec and string.find(sec, "wpn_toz106", 1, true) then
+		return 0.8
+	end
+
+	local id = safe_id(obj)
+	local from_param = nil
+
+	if utils_item and utils_item.get_param then
+		local v = tonumber(utils_item.get_param(sec, id, "hit_power", "float", true))
+		if v ~= nil then
+			if v ~= 0 then
+				return v
+			end
+			from_param = 0
+		end
+	end
+
+	local raw = sec and ini_sys:r_string_ex(sec, "hit_power") or nil
+	if not raw and sec then
+		raw = SYS_GetParam(0, sec, "hit_power", nil)
+	end
+	if type(raw) == "string" then
+		local n = tonumber(raw:match("[%-%d%.]+"))
+		if n ~= nil then
+			if n ~= 0 then
+				return n
+			end
+			from_param = from_param or 0
+		end
+	elseif type(raw) == "number" then
+		if raw ~= 0 then
+			return raw
+		end
+		from_param = from_param or 0
+	end
+
 	if obj and utils_item and utils_item.get_wpn_param then
-		return utils_item.get_wpn_param(obj, sec, "hit_power", 0) or 0
+		local v = tonumber(utils_item.get_wpn_param(obj, sec, "hit_power", nil))
+		if v ~= nil then
+			if v ~= 0 then
+				return v
+			end
+			from_param = from_param or 0
+		end
 	end
-	local str = SYS_GetParam(0, sec, "hit_power", "0")
-	if type(str) ~= "string" then
-		return 0
-	end
-	return tonumber(str:match("[%-%d%.]+")) or 0
+
+	return from_param or 0
 end
 
 local function is_degraded_ammo(sec)
@@ -1235,10 +1253,6 @@ local function is_degraded_ammo(sec)
 		return true
 	end
 	return sec:sub(-8) == "_verybad" or sec:sub(-4) == "_bad"
-end
-
-function is_show_weapon_condition()
-	return CONFIG.show_weapon_condition ~= false
 end
 
 function prop_hit_power(obj, sec)
@@ -1276,13 +1290,6 @@ end
 function prop_movement_spread(obj, sec)
 	local S = dorn_weapon_tooltip_stats
 	if S and S.text_movement_spread and S.text_movement_spread(obj, sec) then
-		return 1
-	end
-end
-
-function prop_weapon_wear(obj, sec)
-	local S = dorn_weapon_tooltip_stats
-	if S and S.text_weapon_wear and S.text_weapon_wear(obj, sec) then
 		return 1
 	end
 end
@@ -2155,7 +2162,6 @@ local DORN_WHITE_STAT_NAMES = {
 	["ui_dorn_wpn_dispersion"] = true,
 	["ui_dorn_wpn_base_spread"] = true,
 	["ui_dorn_wpn_movement_spread"] = true,
-	["ui_dorn_wpn_weapon_wear"] = true,
 	["ui_dorn_wpn_barrel_wear"] = true,
 	["ui_dorn_wpn_burst_control"] = true,
 	["ui_dorn_wpn_bullet_drop"] = true,
@@ -2338,7 +2344,8 @@ local function uiinfo_update_hook(self, obj, sec, flags)
 	base_uiinfo_update(self, obj, sec, flags)
 
 	if not same_item then
-		begin_tooltip_logs()
+		-- Reset per-open tooltip debug dedupe.
+		tooltip_logged = {}
 		apply_custom_stat_display(self, obj, sec)
 		refresh_weapon_damage_panel(self, obj, sec)
 	end
