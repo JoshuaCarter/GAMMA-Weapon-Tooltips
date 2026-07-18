@@ -62,8 +62,19 @@ NAME = {
 }
 
 local logged_once = {}
+local DEBUG_ENABLED = false
+
+function set_debug(enabled)
+	DEBUG_ENABLED = enabled == true
+	if DEBUG_ENABLED then
+		logged_once = {}
+	end
+end
 
 local function dbg(msg)
+	if not DEBUG_ENABLED then
+		return
+	end
 	if DORN and DORN.dbg and DORN.dbg.log then
 		DORN.dbg.log(MOD_ID, msg)
 	else
@@ -72,6 +83,9 @@ local function dbg(msg)
 end
 
 local function log_once(key, msg)
+	if not DEBUG_ENABLED then
+		return
+	end
 	if logged_once[key] then
 		return
 	end
@@ -191,8 +205,12 @@ local function fmt_drop_m(v)
 	return string.format("%.2fm %%c[dark_gray]@%dm%%c[default]", v, DROP_RANGE_M)
 end
 
--- Lateral miss distance from Base Spread angle at DROP_RANGE_M: d * tan(angle).
-function text_dispersion(obj, sec)
+-- Numeric getters (for tooltip compare vs equipped). Lower-is-better where noted.
+-- text_* stay the formatted display; props still return sentinels so 0% rows show
+-- (utils_ui.get_stats_value hides exact 0).
+
+-- Lateral miss distance (m) at DROP_RANGE_M. Lower is better.
+function value_dispersion(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -203,10 +221,19 @@ function text_dispersion(obj, sec)
 			string.format("dispersion [%s]: fire_dispersion_base=%s", tostring(sec), tostring(v)))
 		return nil
 	end
-	return fmt_drop_m(DROP_RANGE_M * math.tan(math.rad(v)))
+	return DROP_RANGE_M * math.tan(math.rad(v))
 end
 
-function text_base_spread(obj, sec)
+function text_dispersion(obj, sec)
+	local v = value_dispersion(obj, sec)
+	if not v then
+		return nil
+	end
+	return fmt_drop_m(v)
+end
+
+-- Base cone degrees. Lower is better.
+function value_base_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -217,10 +244,19 @@ function text_base_spread(obj, sec)
 			string.format("base_spread [%s]: fire_dispersion_base=%s", tostring(sec), tostring(v)))
 		return nil
 	end
+	return v
+end
+
+function text_base_spread(obj, sec)
+	local v = value_base_spread(obj, sec)
+	if not v then
+		return nil
+	end
 	return fmt_deg(v)
 end
 
-function text_movement_spread(obj, sec)
+-- Hip-fire cone at run (degrees). Lower is better.
+function value_movement_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -228,26 +264,29 @@ function text_movement_spread(obj, sec)
 	-- Engine: total hip cone = weapon fire_dispersion_base + actor PDM degrees
 	-- (Actor_Weapon.cpp). Move Spread uses normal run speed (not sprint).
 	local fire_disp = wpn_param(obj, sec, "fire_dispersion_base", 0)
-	local run = nil
-	if fire_disp > 0 then
-		local pdm_base = wpn_param(obj, sec, "PDM_disp_base", 1)
-		local pdm_vel = wpn_param(obj, sec, "PDM_disp_vel_factor", 1)
-		local actor = ACTOR_DISP_BASE * pdm_base
-			* (1 + (SPEED_RUN / VEL_MAX) * ACTOR_DISP_VEL * pdm_vel)
-		run = fire_disp + actor
-	end
-	if not run then
+	if fire_disp <= 0 then
 		log_once("move_spread_fail:" .. tostring(sec), string.format(
-			"move_spread [%s]: run=%s fire_disp=%s",
-			tostring(sec), tostring(run),
-			tostring(wpn_param(obj, sec, "fire_dispersion_base", 0))))
+			"move_spread [%s]: fire_disp=%s",
+			tostring(sec), tostring(fire_disp)))
+		return nil
+	end
+	local pdm_base = wpn_param(obj, sec, "PDM_disp_base", 1)
+	local pdm_vel = wpn_param(obj, sec, "PDM_disp_vel_factor", 1)
+	local actor = ACTOR_DISP_BASE * pdm_base
+		* (1 + (SPEED_RUN / VEL_MAX) * ACTOR_DISP_VEL * pdm_vel)
+	return fire_disp + actor
+end
+
+function text_movement_spread(obj, sec)
+	local run = value_movement_spread(obj, sec)
+	if not run then
 		return nil
 	end
 	return fmt_deg(run)
 end
 
--- Average weapon-condition loss per shot (no silencer): condition_shot_dec x impair.
-function text_weapon_wear(obj, sec)
+-- Avg weapon-condition loss % per shot. Lower is better.
+function value_weapon_wear(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -277,11 +316,17 @@ function text_weapon_wear(obj, sec)
 		n = 1
 	end
 
-	local avg_pct = (sum / n) * 100
+	return (sum / n) * 100
+end
+
+function text_weapon_wear(obj, sec)
+	local avg_pct = value_weapon_wear(obj, sec)
+	if avg_pct == nil then
+		return nil
+	end
 	if avg_pct <= 0 then
 		log_once("wear_zero:" .. tostring(sec), string.format(
-			"weapon_wear [%s]: 0%% (dec=%s ammo_n=%s)",
-			tostring(sec), tostring(dec), tostring(n)))
+			"weapon_wear [%s]: 0%%", tostring(sec)))
 		return "0%"
 	end
 	if avg_pct < 0.1 then
@@ -293,10 +338,8 @@ function text_weapon_wear(obj, sec)
 	return string.format("%.0f%%", avg_pct)
 end
 
--- GAMMA WPO: chance per shot to lose 1% barrel while weapon condition is under
--- the parts-damage threshold (default 85%). Matches arti_jamming.calculate_damage:
--- roll < weapon_degradation x condition_shot_dec x 15000 out of 1000.
-function text_barrel_wear(obj, sec)
+-- Chance % per shot to lose 1% barrel (while cond < 85%). Lower is better.
+function value_barrel_wear(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -310,17 +353,24 @@ function text_barrel_wear(obj, sec)
 		deg = tonumber(game_difficulties.get_eco_factor("weapon_degradation")) or 0.5
 	end
 	-- damage_chance / 1000 * 100 = damage_chance / 10
-	local chance_pct = (deg * dec * 15000) / 10
+	return (deg * dec * 15000) / 10
+end
+
+function text_barrel_wear(obj, sec)
+	local chance_pct = value_barrel_wear(obj, sec)
+	if chance_pct == nil then
+		return nil
+	end
 	if chance_pct <= 0 then
 		log_once("barrel_wear_zero:" .. tostring(sec), string.format(
-			"barrel_wear [%s]: 0%% (dec=%s deg=%s)",
-			tostring(sec), tostring(dec), tostring(deg)))
+			"barrel_wear [%s]: 0%%", tostring(sec)))
 		return "0.00%"
 	end
 	return string.format("%.2f%%", chance_pct)
 end
 
 -- Fractional ADS shots until cumulative vertical camera climb reaches RECOIL_KICK_THRESHOLD.
+-- Higher is better. Cap at 200 (matches ">200" display).
 local function fmt_burst(shots_txt, thr)
 	local thr_txt
 	if thr == math.floor(thr) then
@@ -331,7 +381,7 @@ local function fmt_burst(shots_txt, thr)
 	return string.format("%s %%c[dark_gray]@ %s%%c[default]", shots_txt, thr_txt)
 end
 
-function text_burst_control(obj, sec)
+function value_burst_control(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -342,12 +392,12 @@ function text_burst_control(obj, sec)
 	if disp <= 0 then
 		disp = hip_disp
 	end
+	local max_shots = 200
 	if disp <= 0 then
 		log_once("burst_fail:" .. tostring(sec), string.format(
 			"burst_control [%s]: no cam kick (zoom_cam_dispersion=%s cam_dispersion=%s)",
 			tostring(sec), tostring(zoom_disp), tostring(hip_disp)))
-		-- Still show a value — treat as effectively infinite control rather than n/a.
-		return fmt_burst(string.format(">%d", 200), RECOIL_KICK_THRESHOLD)
+		return max_shots
 	end
 	local inc = wpn_param(obj, sec, "zoom_cam_dispersion_inc", 0)
 	if inc == 0 then
@@ -374,7 +424,6 @@ function text_burst_control(obj, sec)
 	end
 
 	local angle = 0
-	local max_shots = 200
 	for n = 1, max_shots do
 		local kick = disp + inc * (n - 1)
 		if kick < 0 then
@@ -390,7 +439,7 @@ function text_burst_control(obj, sec)
 			if shots < 1 then
 				shots = 1
 			end
-			return fmt_burst(string.format("%.1f", shots), thr)
+			return shots
 		end
 		if return_on and relax > 0 and dt > 0 then
 			angle = angle - relax * dt
@@ -399,10 +448,23 @@ function text_burst_control(obj, sec)
 			end
 		end
 	end
-	return fmt_burst(string.format(">%d", max_shots), thr)
+	return max_shots
 end
 
-function text_bullet_drop(obj, sec)
+function text_burst_control(obj, sec)
+	local shots = value_burst_control(obj, sec)
+	if shots == nil then
+		return nil
+	end
+	local thr = RECOIL_KICK_THRESHOLD
+	if shots >= 200 then
+		return fmt_burst(string.format(">%d", 200), thr)
+	end
+	return fmt_burst(string.format("%.1f", shots), thr)
+end
+
+-- Drop distance (m) at DROP_RANGE_M. Lower is better.
+function value_bullet_drop(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
@@ -421,14 +483,20 @@ function text_bullet_drop(obj, sec)
 		log_once("drop_fail:" .. tostring(sec), string.format(
 			"bullet_drop [%s]: bullet_speed=%s k_speed=%s ammo=%s",
 			tostring(sec), tostring(bullet_speed), tostring(k_speed), tostring(ammo0)))
-		-- Last resort: raw LTX only (ignore ammo k) so the row never shows n/a.
 		v = ini_float(sec, "bullet_speed") or 0
 		if v <= 0 then
-			return fmt_drop_m(999)
+			return 999
 		end
 	end
 
-	local drop = GRAVITY * DROP_RANGE_M * DROP_RANGE_M / (2 * v * v)
+	return GRAVITY * DROP_RANGE_M * DROP_RANGE_M / (2 * v * v)
+end
+
+function text_bullet_drop(obj, sec)
+	local drop = value_bullet_drop(obj, sec)
+	if drop == nil then
+		return nil
+	end
 	return fmt_drop_m(drop)
 end
 
@@ -441,6 +509,54 @@ local TEXT_BY_NAME = {
 	[NAME.burst_control] = text_burst_control,
 	[NAME.bullet_drop] = text_bullet_drop,
 }
+
+local VALUE_BY_NAME = {
+	[NAME.dispersion] = value_dispersion,
+	[NAME.base_spread] = value_base_spread,
+	[NAME.movement_spread] = value_movement_spread,
+	[NAME.weapon_wear] = value_weapon_wear,
+	[NAME.barrel_wear] = value_barrel_wear,
+	[NAME.burst_control] = value_burst_control,
+	[NAME.bullet_drop] = value_bullet_drop,
+}
+
+-- true = lower value is better (green when inspected gun is lower than equipped).
+local LOWER_BETTER = {
+	[NAME.dispersion] = true,
+	[NAME.base_spread] = true,
+	[NAME.movement_spread] = true,
+	[NAME.weapon_wear] = true,
+	[NAME.barrel_wear] = true,
+	[NAME.burst_control] = false,
+	[NAME.bullet_drop] = true,
+}
+
+-- Round compare deltas to match displayed precision.
+local ROUND_DECIMALS = {
+	[NAME.dispersion] = 2,
+	[NAME.base_spread] = 2,
+	[NAME.movement_spread] = 2,
+	[NAME.weapon_wear] = 2,
+	[NAME.barrel_wear] = 2,
+	[NAME.burst_control] = 1,
+	[NAME.bullet_drop] = 2,
+}
+
+function value_for_name(name_id, obj, sec)
+	local fn = VALUE_BY_NAME[name_id]
+	if not fn then
+		return nil
+	end
+	local ok, result = pcall(fn, obj, sec)
+	if ok then
+		return result
+	end
+	return nil
+end
+
+function compare_meta_for_name(name_id)
+	return LOWER_BETTER[name_id] == true, ROUND_DECIMALS[name_id] or 2
+end
 
 local STAT_SHORT = {
 	[NAME.dispersion] = "dispersion",
@@ -467,12 +583,10 @@ function text_for_name(name_id, obj, sec)
 			string.format("%s [%s]: ERROR %s", short, sec_s, tostring(result)))
 		return nil
 	end
+	-- Success: no log (browsing many guns would spam). Failures above are once/sec.
 	if result == nil then
 		log_once(short .. "_nil:" .. sec_s,
 			string.format("%s [%s]: nil (row may stay empty)", short, sec_s))
-	else
-		log_once(short .. "_ok:" .. sec_s,
-			string.format("%s [%s]: %s", short, sec_s, tostring(result)))
 	end
 	return result
 end

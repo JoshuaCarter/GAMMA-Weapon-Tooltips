@@ -1,6 +1,6 @@
 --[[
-	Injects Weapon Condition into the WPO STATUS block (after Jam Probability,
-	before barrel). Loads as zzzz_* so it wraps after Momopate / WPO repairs.
+	Injects Weapon Condition as the first line under the WPO STATUS header.
+	Loads as zzzz_* so it wraps after Momopate / WPO repairs.
 ]]
 
 local LABEL_ID = "ui_dorn_wpn_weapon_condition"
@@ -12,38 +12,27 @@ local function gc(id)
 	return game.translate_string(id)
 end
 
--- Tooltip headers use literal "\n" (backslash + n), not a real newline.
-local function line_start_at(s, pos)
-	local last = 1
-	local i = 1
-	while true do
-		local a, b = string.find(s, "\\n", i, true)
-		if not a or a >= pos then
-			return last
-		end
-		last = b + 1
-		i = b + 1
-	end
-end
-
 local function weapon_condition_line(obj)
 	if not obj or not obj.condition then
 		return nil
 	end
 	local pct = obj:condition() * 100
 	local clr_dot = utils_xml.get_color("d_white")
+	local clr_label = utils_xml.get_color("d_green")
 	local clr_val = utils_xml.get_color("ui_gray_1")
-	if not clr_dot or not clr_val then
+	if not clr_dot or not clr_label or not clr_val then
 		return nil
 	end
+	-- Match Momopate jam line layout: white dot, colored label, grey/white value.
 	return string.format(
-		" %s%s %s %s%.1f%%%s",
+		" %s%s %s%s %s%.1f%%%s",
 		clr_dot, gc("st_dot"),
-		gc(LABEL_ID),
+		clr_label, gc(LABEL_ID),
 		clr_val, pct, "\\n"
 	)
 end
 
+-- Insert immediately after the STATUS header so it is the first bullet.
 local function insert_condition_line(header, line)
 	if not header or header == "" or not line then
 		return header
@@ -53,24 +42,11 @@ local function insert_condition_line(header, line)
 		return header
 	end
 
-	-- Momopate barrel line ends with "% DMG and AP"; stock WPO just names the part.
-	local bpos = string.find(header, "% DMG and AP", 1, true)
-	if not bpos then
-		local barrel = gc("st_name_barrel")
-		if barrel and barrel ~= "" then
-			bpos = string.find(header, barrel, 1, true)
-		end
-	end
-	if bpos then
-		local start = line_start_at(header, bpos)
-		return string.sub(header, 1, start - 1) .. line .. string.sub(header, start)
-	end
-
-	local jam = gc("st_jam")
-	if jam and jam ~= "" then
-		local jpos = string.find(header, jam, 1, true)
-		if jpos then
-			local nl = string.find(header, "\\n", jpos, true)
+	local issues = gc("st_name_issues")
+	if issues and issues ~= "" then
+		local ipos = string.find(header, issues, 1, true)
+		if ipos then
+			local nl = string.find(header, "\\n", ipos, true)
 			if nl then
 				return string.sub(header, 1, nl + 1) .. line .. string.sub(header, nl + 2)
 			end

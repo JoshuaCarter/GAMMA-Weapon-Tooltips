@@ -332,11 +332,16 @@ local CLR = {
 	-- Match utils_ui clr_list p1/n1 (stock stat value colors).
 	stat_pos = GetARGB(255, 170, 170, 170),
 	stat_neg = GetARGB(255, 200, 50, 50),
+	-- Match utils_ui clr_list info_p_txt / info_n_txt (compare column).
+	cmp_pos = GetARGB(200, 100, 255, 100),
+	cmp_neg = GetARGB(200, 255, 100, 100),
 }
 
 -- Forward-declared here so the display helpers below capture these as upvalues.
 local format_raw_ammo_damage_slash
 local format_stalker_ammo_damage_slash
+local avg_raw_ammo_damage
+local avg_stalker_ammo_damage
 
 local ENHANCED_STAT_LABELS = {}
 
@@ -360,23 +365,12 @@ local function custom_stat_text(cap, obj, sec)
 		return nil
 	end
 	if CONFIG.show_stalker_damage and cap == ENHANCED_STAT_LABELS.stalker_damage then
-		local v = format_stalker_ammo_damage_slash(obj, sec)
-		if DORN and DORN.dbg and DORN.dbg.log then
-			DORN.dbg.log(MOD_ID, string.format("stalker_dmg [%s]: %s", tostring(sec), tostring(v)))
-		end
-		return v
+		return format_stalker_ammo_damage_slash(obj, sec)
 	end
 	if CONFIG.show_mutant_damage and cap == ENHANCED_STAT_LABELS.ammo_damage then
-		local v = format_raw_ammo_damage_slash(obj, sec)
-		if DORN and DORN.dbg and DORN.dbg.log then
-			DORN.dbg.log(MOD_ID, string.format("mutant_dmg [%s]: %s", tostring(sec), tostring(v)))
-		end
-		return v
+		return format_raw_ammo_damage_slash(obj, sec)
 	end
 	if not dorn_weapon_tooltip_stats or not dorn_weapon_tooltip_stats.text_for_name then
-		if DORN and DORN.dbg and DORN.dbg.log then
-			DORN.dbg.log(MOD_ID, string.format("companion stats unavailable [%s]", tostring(sec)))
-		end
 		return nil
 	end
 	local S = dorn_weapon_tooltip_stats
@@ -405,6 +399,146 @@ local function custom_stat_text(cap, obj, sec)
 	return nil
 end
 
+-- Companion stat name_id for a translated caption (nil for slash rows / Hit Power).
+local function companion_name_id_for_cap(cap)
+	if not cap or not dorn_weapon_tooltip_stats or not dorn_weapon_tooltip_stats.NAME then
+		return nil
+	end
+	local L = ENHANCED_STAT_LABELS
+	local N = dorn_weapon_tooltip_stats.NAME
+	if cap == L.dispersion then
+		return N.dispersion
+	end
+	if cap == L.base_spread then
+		return N.base_spread
+	end
+	if cap == L.movement_spread then
+		return N.movement_spread
+	end
+	if cap == L.weapon_wear then
+		return N.weapon_wear
+	end
+	if cap == L.barrel_wear then
+		return N.barrel_wear
+	end
+	if cap == L.burst_control then
+		return N.burst_control
+	end
+	if cap == L.bullet_drop then
+		return N.bullet_drop
+	end
+	return nil
+end
+
+-- Equipped weapon in the same slot (stock UIInfoItem compare target).
+local function slot_compare_weapon(info, obj, sec)
+	if not info or not info.can_compare or not obj or not sec or sec == "" then
+		return nil
+	end
+	if not db or not db.actor then
+		return nil
+	end
+	local slot = (SYS_GetParam(2, sec, "slot", -1) or -1) + 1
+	if slot <= 0 then
+		return nil
+	end
+	local obj_b = db.actor:item_in_slot(slot)
+	if not obj_b then
+		return nil
+	end
+	local ok_a, id_a = pcall(function()
+		return obj:id()
+	end)
+	local ok_b, id_b = pcall(function()
+		return obj_b:id()
+	end)
+	if ok_a and ok_b and id_a == id_b then
+		return nil
+	end
+	return obj_b
+end
+
+local function round_compare(v, decimals)
+	local d = decimals or 2
+	local mult = 10 ^ d
+	return math.floor(v * mult + 0.5) / mult
+end
+
+-- Stock text compare: green/red value + "(+/-diff)" in the compare column.
+-- Returns true when a compare delta was shown.
+-- color_value=false: only tint the compare column (slash rows keep ammo colors).
+local function apply_numeric_compare(ele, val_a, val_b, lower_is_better, decimals, color_value)
+	if not ele or not ele.comp or val_a == nil or val_b == nil then
+		return false
+	end
+	local a = round_compare(val_a, decimals)
+	local b = round_compare(val_b, decimals)
+	if a == b then
+		ele.comp:Show(false)
+		return false
+	end
+	local diff = a - b
+	local diff_txt = string.format("%." .. tostring(decimals or 2) .. "f", diff)
+	-- Trim trailing zeros after the decimal (keep at least one digit if fractional).
+	diff_txt = diff_txt:gsub("(%..-)0+$", "%1"):gsub("%.$", "")
+	ele.comp:SetText("(" .. (diff > 0 and "+" or "") .. diff_txt .. ")")
+	ele.comp:Show(true)
+	local better
+	if lower_is_better then
+		better = a < b
+	else
+		better = a > b
+	end
+	local clr = better and CLR.cmp_pos or CLR.cmp_neg
+	ele.comp:SetTextColor(clr)
+	if color_value ~= false and ele.txt then
+		ele.txt:SetTextColor(clr)
+	end
+	return true
+end
+
+local function resolve_compare_sec(obj_b)
+	if not obj_b then
+		return nil
+	end
+	local ok, section = pcall(function()
+		return obj_b:section()
+	end)
+	if ok and section then
+		return ini_sys:r_string_ex(section, "parent_section") or section
+	end
+	return nil
+end
+
+local function apply_companion_compare(ele, name_id, obj, sec, obj_b)
+	local S = dorn_weapon_tooltip_stats
+	if not S or not S.value_for_name or not obj_b then
+		return false
+	end
+	local val_a = S.value_for_name(name_id, obj, sec)
+	local val_b = S.value_for_name(name_id, obj_b, resolve_compare_sec(obj_b))
+	local lower_better, decimals = false, 2
+	if S.compare_meta_for_name then
+		lower_better, decimals = S.compare_meta_for_name(name_id)
+	end
+	return apply_numeric_compare(ele, val_a, val_b, lower_better, decimals)
+end
+
+-- Slash rows: compare mean of the per-ammo numbers shown in the slash.
+local function apply_slash_damage_compare(ele, avg_fn, obj, sec, obj_b)
+	if not avg_fn or not obj_b then
+		return false
+	end
+	return apply_numeric_compare(
+		ele,
+		avg_fn(obj, sec),
+		avg_fn(obj_b, resolve_compare_sec(obj_b)),
+		false,
+		1,
+		false
+	)
+end
+
 local function apply_custom_stat_display(info, obj, sec)
 	if not info or not info.stats then
 		return
@@ -422,13 +556,18 @@ local function apply_custom_stat_display(info, obj, sec)
 		return
 	end
 
+	local obj_b = slot_compare_weapon(info, obj, sec)
+
 	for _, ele in pairs(info.stats) do
 		if ele.cap and ele.txt then
 			local cap = ele.cap:GetText()
 			if cap then
 				if CONFIG.show_hit_power and cap == ENHANCED_STAT_LABELS.hit_power then
 					ele.cap:SetTextColor(CLR.white)
-					ele.txt:SetTextColor(CLR.white)
+					-- Stock Update already fills ele.comp + green/red when values differ.
+					if not (ele.comp and ele.comp:IsShown()) then
+						ele.txt:SetTextColor(CLR.white)
+					end
 				else
 					local custom = custom_stat_text(cap, obj, sec)
 					if custom then
@@ -443,6 +582,25 @@ local function apply_custom_stat_display(info, obj, sec)
 						ele.txt:SetText(custom)
 						ele.txt:Show(true)
 						ele.txt:SetTextColor(CLR.white)
+
+						local comparing = false
+						if obj_b then
+							if cap == ENHANCED_STAT_LABELS.stalker_damage then
+								comparing = apply_slash_damage_compare(
+									ele, avg_stalker_ammo_damage, obj, sec, obj_b)
+							elseif cap == ENHANCED_STAT_LABELS.ammo_damage then
+								comparing = apply_slash_damage_compare(
+									ele, avg_raw_ammo_damage, obj, sec, obj_b)
+							else
+								local name_id = companion_name_id_for_cap(cap)
+								if name_id then
+									comparing = apply_companion_compare(ele, name_id, obj, sec, obj_b)
+								end
+							end
+						end
+						if not comparing and ele.comp then
+							ele.comp:Show(false)
+						end
 					end
 				end
 			end
@@ -733,25 +891,25 @@ local function apply_enhanced_weapon_stats()
 
 	local N = (dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.NAME) or EXTRA_STAT_NAME
 	weapon_stats["dorn_dispersion"] = CONFIG.show_dispersion
-		and make_dorn_row(idx.dispersion, N.dispersion, "ui_wp_prop_tochnost", "prop_dispersion")
+		and make_dorn_row(idx.dispersion, N.dispersion, "ui_wp_prop_contrast", "prop_dispersion")
 		or nil
 	weapon_stats["dorn_base_spread"] = CONFIG.show_base_spread
-		and make_dorn_row(idx.base_spread, N.base_spread, "ui_wp_prop_tochnost", "prop_base_spread")
+		and make_dorn_row(idx.base_spread, N.base_spread, "ui_wp_prop_optics", "prop_base_spread")
 		or nil
 	weapon_stats["dorn_movement_spread"] = CONFIG.show_movement_spread
-		and make_dorn_row(idx.movement_spread, N.movement_spread, "ui_wp_prop_ergonomics", "prop_movement_spread")
+		and make_dorn_row(idx.movement_spread, N.movement_spread, "ui_wp_propery_13", "prop_movement_spread")
 		or nil
 	weapon_stats["dorn_bullet_drop"] = CONFIG.show_bullet_drop
-		and make_dorn_row(idx.bullet_drop, N.bullet_drop, "ui_wp_propery_06", "prop_bullet_drop")
+		and make_dorn_row(idx.bullet_drop, N.bullet_drop, "ui_wp_prop_nastilnost", "prop_bullet_drop")
 		or nil
 	weapon_stats["dorn_weapon_wear"] = CONFIG.show_weapon_wear
-		and make_dorn_row(idx.weapon_wear, N.weapon_wear, "ui_wp_propery_08", "prop_weapon_wear")
+		and make_dorn_row(idx.weapon_wear, N.weapon_wear, "ui_wp_prop_nadezhnost", "prop_weapon_wear")
 		or nil
 	weapon_stats["dorn_barrel_wear"] = CONFIG.show_barrel_wear
-		and make_dorn_row(idx.barrel_wear, N.barrel_wear, "ui_wp_propery_08", "prop_barrel_wear")
+		and make_dorn_row(idx.barrel_wear, N.barrel_wear, "ui_wp_prop_nadezhnost", "prop_barrel_wear")
 		or nil
 	weapon_stats["dorn_burst_control"] = CONFIG.show_burst_control
-		and make_dorn_row(idx.burst_control, N.burst_control, "ui_wp_propery_03", "prop_burst_control")
+		and make_dorn_row(idx.burst_control, N.burst_control, "ui_wp_prop_otdacha", "prop_burst_control")
 		or nil
 end
 
@@ -842,6 +1000,8 @@ local function read_base_stat_flag(key)
 end
 
 local logged_once = {}
+-- Keys logged for the current tooltip open (reset when the hovered item changes).
+local tooltip_logged = {}
 
 local OVERLAY = {
 	RANGE = { order = 1, color = "cyan" },
@@ -883,6 +1043,22 @@ end
 -- Per weapon section: dedupe repeated hovers on the same item, not across items.
 local function log_item_once(reason, sec, msg)
 	log_once(reason .. ":" .. tostring(sec), msg)
+end
+
+-- Once per tooltip open (cleared when the hovered item changes).
+local function begin_tooltip_logs()
+	tooltip_logged = {}
+end
+
+local function log_tooltip(key, msg)
+	if not CONFIG.debug_log then
+		return
+	end
+	if tooltip_logged[key] then
+		return
+	end
+	tooltip_logged[key] = true
+	log(msg)
 end
 
 -- UIInfoItem:Update caches by item id/section and early-returns for the same
@@ -977,6 +1153,11 @@ local function on_option_change()
 
 	if CONFIG.debug_log and not prev_debug then
 		logged_once = {}
+		tooltip_logged = {}
+	end
+
+	if dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.set_debug then
+		dorn_weapon_tooltip_stats.set_debug(CONFIG.debug_log)
 	end
 
 	if DORN and DORN.dbg then
@@ -1496,8 +1677,8 @@ local MUTANT_AMMO_MULT = {
 }
 
 -- Per-ammo flesh damage vs a generic mutant (species mult 100%, no weak spot).
--- Same ammo order as the damage table.
-format_raw_ammo_damage_slash = function(obj, sec)
+-- Same ammo order as the damage table. Returns { {label=, dmg=}, ... } or nil.
+local function mutant_ammo_damage_items(obj, sec)
 	local rounds = collect_sorted_ammo_rounds(obj, sec, nil)
 	if not rounds then
 		return nil
@@ -1511,7 +1692,7 @@ format_raw_ammo_damage_slash = function(obj, sec)
 	local dist = calc_range()
 	local barrel = barrel_mult(obj, CONFIG.use_condition_stats)
 	local diff = difficulty_mult()
-	local parts = {}
+	local items = {}
 	for _, r in ipairs(rounds) do
 		local dmg = math.floor(
 			hit_power / dist_atten(r.air_res, dist)
@@ -1520,19 +1701,16 @@ format_raw_ammo_damage_slash = function(obj, sec)
 				* barrel * diff
 				* DAMAGE_SCALE + 0.5
 		)
-		parts[#parts + 1] = color_ammo_value(r.label, dmg)
+		items[#items + 1] = { label = r.label, dmg = dmg }
 	end
-
-	if #parts == 0 then
+	if #items == 0 then
 		return nil
 	end
-	-- Color codes wrap each value; separators stay default (not ammo-colored).
-	return table.concat(parts, TYPE_CODE_DEFAULT .. " / ")
+	return items
 end
 
 -- Per-ammo pre-armor stalker torso damage at calc_range() (CQC power, no AP/armor).
--- Same ammo order as the damage table.
-format_stalker_ammo_damage_slash = function(obj, sec)
+local function stalker_ammo_damage_items(obj, sec)
 	local rounds = collect_sorted_ammo_rounds(obj, sec, nil)
 	if not rounds then
 		return nil
@@ -1546,20 +1724,57 @@ format_stalker_ammo_damage_slash = function(obj, sec)
 	local dist = calc_range()
 	local barrel = barrel_mult(obj, CONFIG.use_condition_stats)
 	local silencer = silencer_mult(obj, sec, CONFIG.apply_silencer_stats)
-	local parts = {}
+	local items = {}
 	for _, r in ipairs(rounds) do
 		local dmg = math.floor(
 			base_power(hit_power, r.k_hit, r.air_res, dist, BONE_DMG_TORSO, 1.0, r.pellets, barrel, r.sec, silencer)
 				* DAMAGE_SCALE + 0.5
 		)
-		parts[#parts + 1] = color_ammo_value(r.label, dmg)
+		items[#items + 1] = { label = r.label, dmg = dmg }
 	end
-
-	if #parts == 0 then
+	if #items == 0 then
 		return nil
+	end
+	return items
+end
+
+local function avg_ammo_damage(items)
+	if not items or #items == 0 then
+		return nil
+	end
+	local sum = 0
+	for _, it in ipairs(items) do
+		sum = sum + it.dmg
+	end
+	return sum / #items
+end
+
+local function slash_from_damage_items(items)
+	if not items then
+		return nil
+	end
+	local parts = {}
+	for _, it in ipairs(items) do
+		parts[#parts + 1] = color_ammo_value(it.label, it.dmg)
 	end
 	-- Color codes wrap each value; separators stay default (not ammo-colored).
 	return table.concat(parts, TYPE_CODE_DEFAULT .. " / ")
+end
+
+format_raw_ammo_damage_slash = function(obj, sec)
+	return slash_from_damage_items(mutant_ammo_damage_items(obj, sec))
+end
+
+format_stalker_ammo_damage_slash = function(obj, sec)
+	return slash_from_damage_items(stalker_ammo_damage_items(obj, sec))
+end
+
+avg_raw_ammo_damage = function(obj, sec)
+	return avg_ammo_damage(mutant_ammo_damage_items(obj, sec))
+end
+
+avg_stalker_ammo_damage = function(obj, sec)
+	return avg_ammo_damage(stalker_ammo_damage_items(obj, sec))
 end
 
 local function apply_column_headers(fields)
@@ -1810,7 +2025,7 @@ local function add_details_damage_section(sheet, obj)
 		return
 	end
 
-	log_item_once("details_ok", sec, string.format("%s: details damage section shown (%d rows)", sec, #damage_data.rows))
+	log_tooltip("details_ok", string.format("%s: details damage section shown (%d rows)", sec, #damage_data.rows))
 
 	utils_xml.sync_size(dlg, _st, 0, 0)
 	sheet.scroll:AddWindow(_st, true)
@@ -1915,7 +2130,7 @@ local function refresh_weapon_damage_panel(info, obj, sec)
 			info.dorn_wpn_damage:Show(false)
 			return
 		end
-		log_item_once("panel_ok", sec, string.format("%s: hover damage panel shown (%d rows)", sec, #damage_data.rows))
+		log_tooltip("panel_ok", string.format("%s: hover damage panel shown (%d rows)", sec, #damage_data.rows))
 	end
 	sync_damage_layout(info)
 end
@@ -2117,6 +2332,7 @@ local function uiinfo_update_hook(self, obj, sec, flags)
 	base_uiinfo_update(self, obj, sec, flags)
 
 	if not same_item then
+		begin_tooltip_logs()
 		apply_custom_stat_display(self, obj, sec)
 		refresh_weapon_damage_panel(self, obj, sec)
 	end
