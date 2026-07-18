@@ -1,19 +1,21 @@
 --[[
-	Extra weapon stat rows for Dorn's Weapon Tooltip (base spread, movement
-	spread, weapon wear, burst control, bullet drop). Loaded before
+	Extra weapon stat rows for Dorn's Weapon Tooltip (Dispersion, Move Spread,
+	Bullet Wear, Burst Control, Bullet Drop). Loaded before
 	zz_dorn_weapon_tooltip_main, which registers them in utils_ui.stats_table.
+
+	X-Ray binds this file's environment to global dorn_weapon_tooltip_stats.
+	Define fields/functions at top level — do not assign
+	dorn_weapon_tooltip_stats = {} (that nests a second table and breaks
+	lookups like dorn_weapon_tooltip_stats.NAME from other scripts).
 ]]
 
-dorn_weapon_tooltip_stats = {}
-
-local S = dorn_weapon_tooltip_stats
+local MOD_ID = "dorn_weapon_tooltip"
 
 -- GAMMA actor.ltx movement dispersion (Actor_Weapon.cpp, VEL_MAX = 10 m/s).
 -- Engine adds actor PDM degrees to weapon base; it does not multiply them.
 local ACTOR_DISP_BASE = 1.5
 local ACTOR_DISP_VEL = 2.5
 local VEL_MAX = 10
-local SPEED_WALK = 2.5
 local SPEED_RUN = 5.0
 
 local GRAVITY = 9.81
@@ -21,8 +23,21 @@ local DROP_RANGE_M = 200
 -- Tweakable: ADS camera kick angle (degrees) used for Burst Control.
 local RECOIL_KICK_THRESHOLD = 3.0
 
+function set_drop_range(m)
+	local n = tonumber(m)
+	if not n then
+		return
+	end
+	if n < 100 then
+		n = 100
+	elseif n > 2000 then
+		n = 2000
+	end
+	DROP_RANGE_M = n
+end
+
 -- String ids for the new rows (also used by main for white-text display).
-S.NAME = {
+NAME = {
 	base_spread = "ui_dorn_wpn_base_spread",
 	movement_spread = "ui_dorn_wpn_movement_spread",
 	weapon_wear = "ui_dorn_wpn_weapon_wear",
@@ -30,11 +45,93 @@ S.NAME = {
 	bullet_drop = "ui_dorn_wpn_bullet_drop",
 }
 
-local function wpn_param(obj, sec, key, default)
-	if utils_item and utils_item.get_wpn_param then
-		return utils_item.get_wpn_param(obj, sec, key, default or 0) or default or 0
+local logged_once = {}
+
+local function dbg(msg)
+	if DORN and DORN.dbg and DORN.dbg.log then
+		DORN.dbg.log(MOD_ID, msg)
+	else
+		printf("[DBG][%s] %s", MOD_ID, tostring(msg))
 	end
-	return tonumber(SYS_GetParam(0, sec, key, tostring(default or 0))) or default or 0
+end
+
+local function log_once(key, msg)
+	if logged_once[key] then
+		return
+	end
+	logged_once[key] = true
+	dbg(msg)
+end
+
+local function safe_id(obj)
+	if not obj then
+		return nil
+	end
+	local ok, id = pcall(function()
+		return obj:id()
+	end)
+	if ok then
+		return id
+	end
+	return nil
+end
+
+-- LTX float with one parent_section hop (r_float_ex does not inherit).
+local function ini_float(sec, key)
+	if not sec then
+		return nil
+	end
+	local v = ini_sys:r_float_ex(sec, key)
+	if v ~= nil then
+		return tonumber(v)
+	end
+	local parent = ini_sys:r_string_ex(sec, "parent_section")
+	if parent and parent ~= sec then
+		v = ini_sys:r_float_ex(parent, key)
+		if v ~= nil then
+			return tonumber(v)
+		end
+	end
+	return nil
+end
+
+-- Prefer get_param + ini. get_wpn_param often returns a false 0 for LTX floats
+-- (bullet_speed, zoom_cam_dispersion, condition_shot_dec, …) and must not win.
+local function wpn_param(obj, sec, key, default)
+	default = default or 0
+	local id = safe_id(obj)
+	local from_param = nil
+
+	if utils_item and utils_item.get_param then
+		local v = tonumber(utils_item.get_param(sec, id, key, "float", true))
+		if v ~= nil then
+			if v ~= 0 then
+				return v
+			end
+			from_param = 0
+		end
+	end
+
+	local from_ini = ini_float(sec, key)
+	if from_ini ~= nil and from_ini ~= 0 then
+		return from_ini
+	end
+
+	if from_param ~= nil then
+		return from_param
+	end
+	if from_ini ~= nil then
+		return from_ini
+	end
+
+	if utils_item and utils_item.get_wpn_param then
+		local v = tonumber(utils_item.get_wpn_param(obj, sec, key, nil))
+		if v ~= nil then
+			return v
+		end
+	end
+
+	return tonumber(SYS_GetParam(0, sec, key, tostring(default))) or default
 end
 
 local function resolve_sec(obj, sec)
@@ -44,28 +141,37 @@ local function resolve_sec(obj, sec)
 	if not obj then
 		return nil
 	end
-	return ini_sys:r_string_ex(obj:section(), "parent_section") or obj:section()
+	-- Avoid method calls on stale/non-object refs (crashes in IsWeapon via :clsid).
+	local ok, section = pcall(function()
+		return obj:section()
+	end)
+	if not ok or not section then
+		return nil
+	end
+	return ini_sys:r_string_ex(section, "parent_section") or section
 end
 
-local function is_weapon_target(obj, sec)
-	sec = resolve_sec(obj, sec)
-	if not sec then
+-- Section-only check. Matches UIInfoItem:GetType — never call IsWeapon(sec):
+-- IsWeapon expects an object (or nil + clsid) and will crash on :clsid() for strings.
+local function is_weapon_section(sec)
+	if not sec or sec == "" then
 		return false
 	end
 	if IsItem and IsItem("fake_ammo_wpn", sec) then
 		return false
 	end
-	if obj and IsWeapon(obj) then
-		return true
-	end
-	return IsWeapon(sec)
+	return ini_sys:r_string_ex(sec, "ammo_class") ~= nil
 end
+
+-- Degree is CP1251 0xB0 (string.char(176)). A literal UTF-8 "°" in this
+-- file becomes C2 B0 and shows as "B°" in the Anomaly UI.
+local DEG = string.char(176)
 
 local function fmt_deg(v)
 	if v < 10 then
-		return string.format("%.1f°", v)
+		return string.format("%.1f%s", v, DEG)
 	end
-	return string.format("%.0f°", v)
+	return string.format("%.0f%s", v, DEG)
 end
 
 local function fmt_drop_m(v)
@@ -79,8 +185,8 @@ local function is_degraded_ammo(ammo_sec)
 	return ammo_sec:find("bad", 1, true) ~= nil
 end
 
--- Engine: total = weapon_base + actor_PDM (Actor_Weapon.cpp / WeaponDispersion.cpp).
--- Standing hip (avel=0, not crouch): actor = disp_base * PDM_base * (1 + speed/10 * disp_vel * PDM_vel).
+-- Engine: total hip cone = weapon fire_dispersion_base + actor PDM degrees
+-- (Actor_Weapon.cpp). Move Spread uses normal run speed (not sprint).
 local function hip_spread_for_weapon(obj, sec, speed)
 	local fire_disp = wpn_param(obj, sec, "fire_dispersion_base", 0)
 	if fire_disp <= 0 then
@@ -92,44 +198,49 @@ local function hip_spread_for_weapon(obj, sec, speed)
 	return fire_disp + actor
 end
 
-function S.text_base_spread(obj, sec)
+function text_base_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
-	if not is_weapon_target(obj, sec) then
+	if not is_weapon_section(sec) then
 		return nil
 	end
 	local v = wpn_param(obj, sec, "fire_dispersion_base", 0)
 	if v <= 0 then
+		log_once("base_spread_fail:" .. tostring(sec),
+			string.format("base_spread [%s]: fire_dispersion_base=%s", tostring(sec), tostring(v)))
 		return nil
 	end
 	return fmt_deg(v)
 end
 
-function S.text_movement_spread(obj, sec)
+function text_movement_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
-	if not is_weapon_target(obj, sec) then
+	if not is_weapon_section(sec) then
 		return nil
 	end
-	local walk = hip_spread_for_weapon(obj, sec, SPEED_WALK)
 	local run = hip_spread_for_weapon(obj, sec, SPEED_RUN)
-	if not walk or not run then
+	if not run then
+		log_once("move_spread_fail:" .. tostring(sec), string.format(
+			"move_spread [%s]: run=%s fire_disp=%s",
+			tostring(sec), tostring(run),
+			tostring(wpn_param(obj, sec, "fire_dispersion_base", 0))))
 		return nil
 	end
-	return string.format("walk %s · run %s hip", fmt_deg(walk), fmt_deg(run))
+	return fmt_deg(run)
 end
 
--- Average condition loss per shot across ammo types (no silencer).
--- Engine wear = condition_shot_dec * impair.
-function S.text_weapon_wear(obj, sec)
+-- Average condition loss per shot (no silencer): condition_shot_dec x impair.
+function text_weapon_wear(obj, sec)
 	sec = resolve_sec(obj, sec)
-	if not is_weapon_target(obj, sec) then
+	if not is_weapon_section(sec) then
 		return nil
 	end
 	local dec = wpn_param(obj, sec, "condition_shot_dec", 0)
-	if dec <= 0 then
-		return nil
+	if dec < 0 then
+		dec = 0
 	end
 
-	local ammo_list = utils_item.get_ammo(sec, obj and obj:id() or nil)
+	local id = safe_id(obj)
+	local ammo_list = utils_item.get_ammo(sec, id)
 	local sum = 0
 	local n = 0
 	if ammo_list then
@@ -147,30 +258,48 @@ function S.text_weapon_wear(obj, sec)
 	end
 
 	local avg_pct = (sum / n) * 100
-	if avg_pct < 0.01 then
-		return string.format("%.3f%%/shot", avg_pct)
+	if avg_pct <= 0 then
+		log_once("wear_zero:" .. tostring(sec), string.format(
+			"bullet_wear [%s]: 0%% (dec=%s ammo_n=%s)",
+			tostring(sec), tostring(dec), tostring(n)))
+		return "0%"
 	end
-	if avg_pct < 1 then
-		return string.format("%.2f%%/shot", avg_pct)
+	if avg_pct < 0.1 then
+		return string.format("%.2f%%", avg_pct)
 	end
-	return string.format("%.1f%%/shot", avg_pct)
+	if avg_pct < 10 then
+		return string.format("%.1f%%", avg_pct)
+	end
+	return string.format("%.0f%%", avg_pct)
 end
 
 -- Fractional ADS shots until cumulative vertical camera climb reaches RECOIL_KICK_THRESHOLD.
-function S.text_burst_control(obj, sec)
+function text_burst_control(obj, sec)
 	sec = resolve_sec(obj, sec)
-	if not is_weapon_target(obj, sec) then
+	if not is_weapon_section(sec) then
 		return nil
 	end
-	local disp = wpn_param(obj, sec, "zoom_cam_dispersion", 0)
+	local zoom_disp = wpn_param(obj, sec, "zoom_cam_dispersion", 0)
+	local hip_disp = wpn_param(obj, sec, "cam_dispersion", 0)
+	local disp = zoom_disp
 	if disp <= 0 then
-		return nil
+		disp = hip_disp
+	end
+	if disp <= 0 then
+		log_once("burst_fail:" .. tostring(sec), string.format(
+			"burst_control [%s]: no cam kick (zoom_cam_dispersion=%s cam_dispersion=%s)",
+			tostring(sec), tostring(zoom_disp), tostring(hip_disp)))
+		-- Still show a value — treat as effectively infinite control rather than n/a.
+		return string.format(">%d shots", 200)
 	end
 	local inc = wpn_param(obj, sec, "zoom_cam_dispersion_inc", 0)
+	if inc == 0 then
+		inc = wpn_param(obj, sec, "cam_dispersion_inc", 0)
+	end
 	local thr = RECOIL_KICK_THRESHOLD
 
 	local return_on = true
-	if ini_sys:line_exist(sec, "cam_return") then
+	if sec and ini_sys:line_exist(sec, "cam_return") then
 		return_on = wpn_param(obj, sec, "cam_return", 1) ~= 0
 	end
 
@@ -216,26 +345,30 @@ function S.text_burst_control(obj, sec)
 	return string.format(">%d shots", max_shots)
 end
 
-function S.text_bullet_drop(obj, sec)
+function text_bullet_drop(obj, sec)
 	sec = resolve_sec(obj, sec)
-	if not is_weapon_target(obj, sec) then
+	if not is_weapon_section(sec) then
 		return nil
 	end
 	local bullet_speed = wpn_param(obj, sec, "bullet_speed", 0)
-	if bullet_speed <= 0 then
-		return nil
-	end
-
-	local id = obj and obj:id()
-	local ammo_list = utils_item.get_ammo(sec, id)
+	local id = safe_id(obj)
+	local ammo_list = utils_item and utils_item.get_ammo(sec, id) or nil
+	local ammo0 = ammo_list and ammo_list[1] or nil
 	local k_speed = 1
-	if ammo_list and ammo_list[1] then
-		k_speed = ini_sys:r_float_ex(ammo_list[1], "k_bullet_speed") or 1
+	if ammo0 then
+		k_speed = ini_sys:r_float_ex(ammo0, "k_bullet_speed") or 1
 	end
 
 	local v = bullet_speed * k_speed
 	if v <= 0 then
-		return nil
+		log_once("drop_fail:" .. tostring(sec), string.format(
+			"bullet_drop [%s]: bullet_speed=%s k_speed=%s ammo=%s",
+			tostring(sec), tostring(bullet_speed), tostring(k_speed), tostring(ammo0)))
+		-- Last resort: raw LTX only (ignore ammo k) so the row never shows n/a.
+		v = ini_float(sec, "bullet_speed") or 0
+		if v <= 0 then
+			return fmt_drop_m(999)
+		end
 	end
 
 	local drop = GRAVITY * DROP_RANGE_M * DROP_RANGE_M / (2 * v * v)
@@ -243,48 +376,73 @@ function S.text_bullet_drop(obj, sec)
 end
 
 local TEXT_BY_NAME = {
-	[S.NAME.base_spread] = S.text_base_spread,
-	[S.NAME.movement_spread] = S.text_movement_spread,
-	[S.NAME.weapon_wear] = S.text_weapon_wear,
-	[S.NAME.burst_control] = S.text_burst_control,
-	[S.NAME.bullet_drop] = S.text_bullet_drop,
+	[NAME.base_spread] = text_base_spread,
+	[NAME.movement_spread] = text_movement_spread,
+	[NAME.weapon_wear] = text_weapon_wear,
+	[NAME.burst_control] = text_burst_control,
+	[NAME.bullet_drop] = text_bullet_drop,
 }
 
-function S.text_for_name(name_id, obj, sec)
+local STAT_SHORT = {
+	[NAME.base_spread] = "base_spread",
+	[NAME.movement_spread] = "move_spread",
+	[NAME.weapon_wear] = "bullet_wear",
+	[NAME.burst_control] = "burst_control",
+	[NAME.bullet_drop] = "bullet_drop",
+}
+
+function text_for_name(name_id, obj, sec)
 	local fn = TEXT_BY_NAME[name_id]
 	if not fn then
+		log_once("unknown_stat:" .. tostring(name_id),
+			string.format("text_for_name: unknown name_id=%s", tostring(name_id)))
 		return nil
 	end
-	return fn(obj, sec)
+	local ok, result = pcall(fn, obj, sec)
+	local short = STAT_SHORT[name_id] or tostring(name_id)
+	local sec_s = tostring(resolve_sec(obj, sec) or sec or "?")
+	if not ok then
+		log_once(short .. "_err:" .. sec_s,
+			string.format("%s [%s]: ERROR %s", short, sec_s, tostring(result)))
+		return nil
+	end
+	if result == nil then
+		log_once(short .. "_nil:" .. sec_s,
+			string.format("%s [%s]: nil (row may stay empty)", short, sec_s))
+	else
+		log_once(short .. "_ok:" .. sec_s,
+			string.format("%s [%s]: %s", short, sec_s, tostring(result)))
+	end
+	return result
 end
 
 -- Sentinel props so utils_ui creates the row; real text is applied by main.
-function S.prop_base_spread(obj, sec)
-	if S.text_base_spread(obj, sec) then
+function prop_base_spread(obj, sec)
+	if text_base_spread(obj, sec) then
 		return 1
 	end
 end
 
-function S.prop_movement_spread(obj, sec)
-	if S.text_movement_spread(obj, sec) then
+function prop_movement_spread(obj, sec)
+	if text_movement_spread(obj, sec) then
 		return 1
 	end
 end
 
-function S.prop_weapon_wear(obj, sec)
-	if S.text_weapon_wear(obj, sec) then
+function prop_weapon_wear(obj, sec)
+	if text_weapon_wear(obj, sec) then
 		return 1
 	end
 end
 
-function S.prop_burst_control(obj, sec)
-	if S.text_burst_control(obj, sec) then
+function prop_burst_control(obj, sec)
+	if text_burst_control(obj, sec) then
 		return 1
 	end
 end
 
-function S.prop_bullet_drop(obj, sec)
-	if S.text_bullet_drop(obj, sec) then
+function prop_bullet_drop(obj, sec)
+	if text_bullet_drop(obj, sec) then
 		return 1
 	end
 end

@@ -19,7 +19,8 @@
 	                exact armor only.
 
 	One row per ammo round (Type label from AMMO_TYPE_SHORT map; unknown = ????).
-	AP column grey-to-yellow. Shift columns via XML.
+	Type label color from AMMO_TYPE_COLOR (fallback grey).
+	AP column grey-to-orange. Shift columns via XML.
 
 	This script is prefixed zz_ on purpose: G.A.M.M.A. Accurate Defense Values
 	rebuilds utils_ui.stats_table["weapon"] wholesale in ish_item_stats'
@@ -37,6 +38,7 @@
 	   "default" (same order as tooltip ammo icons / ammo_class).
 
 	4. calc_range - assumed distance in meters for damage math (0-200, default 20).
+	   drop_range - Bullet Drop distance (100-2000, default 200).
 
 	5. use_condition_table / use_condition_stats - when on, apply CQC
 	   barrel-condition factors to the damage table / slash damage stats
@@ -47,17 +49,20 @@
 	   suppressor. Mutant hits do not use this in live CQC.
 
 	7. show_hit_power / show_stalker_damage / show_mutant_damage - Hit Power,
-	   Stalker Damage, and Mutant Damage rows (each on by default).
+	   DMG vs Stalkers, and DMG vs Mutants rows (each on by default).
 
 	8. show_accuracy / show_handling / show_reliability / show_recoil /
 	   show_muzzle_velocity - base Momopate/vanilla rows (each on by default).
 
-	9. show_base_spread / show_movement_spread / show_weapon_wear /
-	   show_burst_control / show_bullet_drop - new companion rows (each on by
-	   default). Placement via stat_row_placement.
+	9. Companion rows (MCM keys keep old names for saved settings):
+	   show_base_spread = Dispersion, show_movement_spread = Move Spread,
+	   show_weapon_wear = Bullet Wear, show_burst_control, show_bullet_drop.
+	   Placement via stat_row_placement.
 
 	10. stat_row_placement - "inline" (under related base row) or "after"
-	   (after Accuracy…Recoil Control).
+	   (Hit Power / DMG rows / companion rows as a block after Recoil Control).
+
+	Development: rangefinder MCM toggle shows crosshair distance via DORN.dbg overlay.
 ]]
 
 local MOD_ID = "dorn_weapon_tooltip"
@@ -88,25 +93,26 @@ local CONFIG = {
 	use_condition_stats = false,
 	apply_silencer = true,
 	debug_log = false,
+	rangefinder = false,
 }
 
--- Companion-row sort indices. Inline = just under the related Momopate/base
--- row; after = block after Recoil Control (index 104).
-local EXTRA_STAT_INDEX = {
-	inline = {
-		base_spread = 1.5,
-		movement_spread = 2.5,
-		bullet_drop = 101.5,
-		weapon_wear = 103.5,
-		burst_control = 104.5,
-	},
-	after = {
-		base_spread = 105,
-		movement_spread = 106,
-		bullet_drop = 107,
-		weapon_wear = 108,
-		burst_control = 109,
-	},
+-- Companion-row sort indices for inline placement (under related Momopate/base
+-- rows). "after" placement is computed from the highest non-Dorn weapon index.
+local EXTRA_STAT_INDEX_INLINE = {
+	base_spread = 1.5,
+	movement_spread = 2.5,
+	bullet_drop = 101.5,
+	weapon_wear = 103.5,
+	burst_control = 104.5,
+}
+
+-- Fallback string ids if dorn_weapon_tooltip_stats failed to expose NAME.
+local EXTRA_STAT_NAME = {
+	base_spread = "ui_dorn_wpn_base_spread",
+	movement_spread = "ui_dorn_wpn_movement_spread",
+	weapon_wear = "ui_dorn_wpn_weapon_wear",
+	burst_control = "ui_dorn_wpn_burst_control",
+	bullet_drop = "ui_dorn_wpn_bullet_drop",
 }
 
 -- Hit Power is weapon hit_power x 100 (per pellet, same as other guns), no ammo k_hit.
@@ -116,7 +122,7 @@ local BUCK_SELF = "ammo_12x70_buck_self"
 
 -- k_ap is the raw armor-piercing coefficient. The ammo's own info card scales it
 -- x1000 (k_ap 0.01 -> "10"), so we match that here.
--- Displayed AP = k_ap * AP_SCALE. Color scale: grey at 0 → full yellow at the
+-- Displayed AP = k_ap * AP_SCALE. Color scale: grey at 0 → full orange at the
 -- display AP needed to penetrate 0.650 torso bone armor (Max column) at calc_range.
 local AP_SCALE = 1000
 local AP_COLOR_ARMOR = 0.650
@@ -200,14 +206,14 @@ local function lerp(a, b, t)
 	return a + (b - a) * t
 end
 
--- Damage cells fade grey (least damage) to green (most damage). Scaled 1..max
+-- Damage cells fade grey (least damage) to red (most damage). Scaled 1..max
 -- across all rows in a section (torso or head) so identical numbers always
 -- share the same color and higher damage is always brighter than lower.
 -- Head uses its own max (headshots hit much harder than torso).
 -- gamma < 1 brightens the mid-range so the ramp reads as a smooth gradient.
 local DMG_COLOR_GAMMA = 0.75
 local DMG_CLR_MIN = { 135, 135, 135 }
-local DMG_CLR_MAX = { 64, 255, 64 }
+local DMG_CLR_MAX = { 255, 64, 64 }
 local function dmg_value_color(dmg, lo, hi)
 	local span = hi - lo
 	local t = (span > 0) and clamp((dmg - lo) / span, 0, 1) or 1
@@ -284,6 +290,55 @@ local AMMO_TYPE_SHORT = {
 }
 local AMMO_TYPE_UNKNOWN = "????"
 
+-- Type-column colors by short label (ammo_type_label_reference.md Color column).
+-- Lookup by label; unknown / ???? fall back to grey.
+-- RGB matches color_defs.xml where names overlap; teal ≈ d_cyan.
+local TYPE_RGB = {
+	yellow = { 255, 255, 0 },
+	orange = { 255, 150, 0 },
+	teal = { 64, 200, 180 },
+	grey = { 170, 170, 170 },
+}
+local TYPE_ARGB = {}
+local TYPE_CODE = {}
+for name, rgb in pairs(TYPE_RGB) do
+	TYPE_ARGB[name] = GetARGB(255, rgb[1], rgb[2], rgb[3])
+	TYPE_CODE[name] = string.format("%%c[255,%d,%d,%d]", rgb[1], rgb[2], rgb[3])
+end
+local TYPE_CODE_DEFAULT = "%c[default]"
+local AMMO_TYPE_COLOR = {
+	-- yellow
+	["FMJ"] = "yellow",
+	["BULL"] = "yellow",
+	["SLUG"] = "yellow",
+	["LRNPC"] = "yellow",
+	["7N1"] = "yellow",
+	["SP10"] = "yellow",
+	["SP-5"] = "yellow",
+	["PP"] = "yellow",
+	-- teal
+	["HP"] = "teal",
+	["BUCK"] = "teal",
+	["SHRAP"] = "teal",
+	["FED"] = "teal",
+	-- orange
+	["AP"] = "orange",
+	["SLAP"] = "orange",
+	["BARR"] = "orange",
+	["BMG"] = "orange",
+	["PST"] = "orange",
+	["7N14"] = "orange",
+	["SP-6"] = "orange",
+	["MAG"] = "orange",
+	-- grey
+	["ECO"] = "grey",
+	["BATT"] = "grey",
+	["M203"] = "grey",
+	["OG-7V"] = "grey",
+	["VOG-25"] = "grey",
+	["VOG-30"] = "grey",
+}
+
 local function ammo_display_label(sec)
 	local base = sec or ""
 	if base:sub(-8) == "_verybad" then
@@ -292,6 +347,20 @@ local function ammo_display_label(sec)
 		base = base:sub(1, -5)
 	end
 	return AMMO_TYPE_SHORT[base] or AMMO_TYPE_UNKNOWN
+end
+
+local function ammo_type_color(label)
+	local name = AMMO_TYPE_COLOR[label]
+	return (name and TYPE_ARGB[name]) or TYPE_ARGB.grey
+end
+
+local function ammo_type_color_code(label)
+	local name = AMMO_TYPE_COLOR[label]
+	return (name and TYPE_CODE[name]) or TYPE_CODE.grey
+end
+
+local function color_ammo_value(label, text)
+	return ammo_type_color_code(label) .. tostring(text)
 end
 
 local CLR = {
@@ -326,12 +395,23 @@ local function dorn_custom_stat_text(cap, obj, sec)
 		return nil
 	end
 	if CONFIG.show_stalker_damage and cap == ENHANCED_STAT_LABELS.stalker_damage then
-		return format_stalker_ammo_damage_slash(obj, sec)
+		local v = format_stalker_ammo_damage_slash(obj, sec)
+		if DORN and DORN.dbg and DORN.dbg.log then
+			DORN.dbg.log(MOD_ID, string.format("stalker_dmg [%s]: %s", tostring(sec), tostring(v)))
+		end
+		return v
 	end
 	if CONFIG.show_mutant_damage and cap == ENHANCED_STAT_LABELS.ammo_damage then
-		return format_raw_ammo_damage_slash(obj, sec)
+		local v = format_raw_ammo_damage_slash(obj, sec)
+		if DORN and DORN.dbg and DORN.dbg.log then
+			DORN.dbg.log(MOD_ID, string.format("mutant_dmg [%s]: %s", tostring(sec), tostring(v)))
+		end
+		return v
 	end
 	if not dorn_weapon_tooltip_stats or not dorn_weapon_tooltip_stats.text_for_name then
+		if DORN and DORN.dbg and DORN.dbg.log then
+			DORN.dbg.log(MOD_ID, string.format("companion stats unavailable [%s]", tostring(sec)))
+		end
 		return nil
 	end
 	local S = dorn_weapon_tooltip_stats
@@ -358,6 +438,18 @@ local function apply_custom_stat_display(info, obj, sec)
 	if not info or not info.stats then
 		return
 	end
+	if (not sec or sec == "") and obj then
+		local ok, section = pcall(function()
+			return obj:section()
+		end)
+		if ok and section then
+			sec = ini_sys:r_string_ex(section, "parent_section") or section
+		end
+	end
+	-- Match GetType("weapon"): IsWeapon(sec) crashes — it calls :clsid() on the string.
+	if not sec or info:GetType(sec) ~= "weapon" then
+		return
+	end
 
 	for _, ele in pairs(info.stats) do
 		if ele.cap and ele.txt then
@@ -370,6 +462,10 @@ local function apply_custom_stat_display(info, obj, sec)
 					local custom = dorn_custom_stat_text(cap, obj, sec)
 					if custom then
 						ele.cap:SetTextColor(CLR.white)
+						if cap == ENHANCED_STAT_LABELS.stalker_damage
+							or cap == ENHANCED_STAT_LABELS.ammo_damage then
+							ele.txt:SetTextComplexMode(true)
+						end
 						ele.txt:SetText(custom)
 						ele.txt:Show(true)
 						ele.txt:SetTextColor(CLR.white)
@@ -503,6 +599,50 @@ local function make_dorn_row(index, name, icon, prop)
 	}
 end
 
+-- Highest sort index among stock/Momopate weapon rows (excludes Dorn keys).
+local function max_non_dorn_weapon_index(weapon_stats)
+	local max_i = 0
+	for key, def in pairs(weapon_stats) do
+		if def and type(def) == "table" and def.index
+			and key ~= "damage"
+			and string.find(key, "dorn_", 1, true) ~= 1
+		then
+			if def.index > max_i then
+				max_i = def.index
+			end
+		end
+	end
+	return max_i
+end
+
+local function placement_indices(weapon_stats)
+	if CONFIG.stat_row_placement == "after" then
+		-- Block after Accuracy…Recoil Control (and any other non-Dorn rows).
+		local base = max_non_dorn_weapon_index(weapon_stats)
+		return {
+			hit_power = base + 1,
+			stalker_damage = base + 2,
+			mutant_damage = base + 3,
+			base_spread = base + 4,
+			movement_spread = base + 5,
+			bullet_drop = base + 6,
+			weapon_wear = base + 7,
+			burst_control = base + 8,
+		}
+	end
+	-- Inline: Hit Power fills ADV's unused index 3 (between Handling and Fire Rate).
+	return {
+		hit_power = 3,
+		stalker_damage = 3.25,
+		mutant_damage = 3.5,
+		base_spread = EXTRA_STAT_INDEX_INLINE.base_spread,
+		movement_spread = EXTRA_STAT_INDEX_INLINE.movement_spread,
+		bullet_drop = EXTRA_STAT_INDEX_INLINE.bullet_drop,
+		weapon_wear = EXTRA_STAT_INDEX_INLINE.weapon_wear,
+		burst_control = EXTRA_STAT_INDEX_INLINE.burst_control,
+	}
+end
+
 local function apply_enhanced_weapon_stats()
 	if not utils_ui or not utils_ui.stats_table then
 		return
@@ -518,6 +658,12 @@ local function apply_enhanced_weapon_stats()
 	set_base_stat(weapon_stats, "reliability", CONFIG.show_reliability)
 	set_base_stat(weapon_stats, "recoil", CONFIG.show_recoil)
 	set_base_stat(weapon_stats, "speed", CONFIG.show_muzzle_velocity)
+
+	local idx = placement_indices(weapon_stats)
+
+	HIT_POWER_STAT.index = idx.hit_power
+	STALKER_DAMAGE_STAT.index = idx.stalker_damage
+	RAW_AMMO_DAMAGE_STAT.index = idx.mutant_damage
 
 	cache_base_stat(weapon_stats, "damage")
 	if CONFIG.show_hit_power then
@@ -537,12 +683,7 @@ local function apply_enhanced_weapon_stats()
 		weapon_stats["dorn_ammo_damage"] = nil
 	end
 
-	local N = dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.NAME
-	if not N then
-		return
-	end
-
-	local idx = EXTRA_STAT_INDEX[CONFIG.stat_row_placement] or EXTRA_STAT_INDEX.inline
+	local N = (dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.NAME) or EXTRA_STAT_NAME
 	weapon_stats["dorn_base_spread"] = CONFIG.show_base_spread
 		and make_dorn_row(idx.base_spread, N.base_spread, "ui_wp_prop_tochnost", "prop_base_spread")
 		or nil
@@ -729,14 +870,23 @@ local function on_option_change()
 			CONFIG.stat_row_placement = "inline"
 		end
 		CONFIG.calc_range_m = clamp(DORN.mcm.number(MOD_ID, "main/calc_range", 20), 0, 200)
+		local drop_range = clamp(DORN.mcm.number(MOD_ID, "main/drop_range", 200), 100, 2000)
+		if dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.set_drop_range then
+			dorn_weapon_tooltip_stats.set_drop_range(drop_range)
+		end
 		CONFIG.use_condition_table = DORN.mcm.bool(MOD_ID, "main/use_condition_table", false)
 		CONFIG.use_condition_stats = DORN.mcm.bool(MOD_ID, "main/use_condition_stats", false)
 		CONFIG.apply_silencer = DORN.mcm.bool(MOD_ID, "main/apply_silencer", true)
 		CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
+		CONFIG.rangefinder = DORN.mcm.bool(MOD_ID, "development/rangefinder", false)
 	end
 
 	if CONFIG.debug_log and not prev_debug then
 		logged_once = {}
+	end
+
+	if DORN and DORN.dbg and DORN.dbg.set_enabled then
+		DORN.dbg.set_enabled(MOD_ID, CONFIG.rangefinder)
 	end
 
 	refresh_enhanced_stat_labels()
@@ -918,9 +1068,10 @@ end
 local function ap_display_color(ap, silencer)
 	local hi = ap_pen_display_max(silencer)
 	local t = clamp((tonumber(ap) or 0) / hi, 0, 1)
+	-- grey (175,175,175) → orange (255,150,0); matches TYPE_RGB.orange.
 	return GetARGB(255,
 		math.floor(lerp(175, 255, t)),
-		math.floor(lerp(175, 255, t)),
+		math.floor(lerp(175, 150, t)),
 		math.floor(lerp(175, 0, t)))
 end
 
@@ -1146,7 +1297,7 @@ local function build_ammo_damage_rows(obj, sec)
 		return nil
 	end
 
-	-- Shared color scale per section: 1 (grey) .. max damage (bright green).
+	-- Shared color scale per section: 1 (grey) .. max damage (bright red).
 	local torso_hi = section_dmg_max(rows, "torso")
 	local head_hi = section_dmg_max(rows, "head")
 	local ordered = {}
@@ -1232,13 +1383,14 @@ format_raw_ammo_damage_slash = function(obj, sec)
 				* barrel * diff
 				* DAMAGE_SCALE + 0.5
 		)
-		parts[#parts + 1] = tostring(dmg)
+		parts[#parts + 1] = color_ammo_value(r.label, dmg)
 	end
 
 	if #parts == 0 then
 		return nil
 	end
-	return table.concat(parts, "/")
+	-- Color codes wrap each value; separators stay default (not ammo-colored).
+	return table.concat(parts, TYPE_CODE_DEFAULT .. " / ")
 end
 
 -- Per-ammo pre-armor stalker torso damage at calc_range() (CQC power, no AP/armor).
@@ -1263,13 +1415,14 @@ format_stalker_ammo_damage_slash = function(obj, sec)
 			base_power(hit_power, r.k_hit, r.air_res, dist, BONE_DMG_TORSO, 1.0, r.pellets, barrel, r.sec, silencer)
 				* DAMAGE_SCALE + 0.5
 		)
-		parts[#parts + 1] = tostring(dmg)
+		parts[#parts + 1] = color_ammo_value(r.label, dmg)
 	end
 
 	if #parts == 0 then
 		return nil
 	end
-	return table.concat(parts, "/")
+	-- Color codes wrap each value; separators stay default (not ammo-colored).
+	return table.concat(parts, TYPE_CODE_DEFAULT .. " / ")
 end
 
 local function apply_column_headers(fields)
@@ -1452,7 +1605,7 @@ local function populate_damage_fields(fields, data, panel_width)
 		local rd = data.rows[i]
 		if rd then
 			row.type:SetText(rd.type or "")
-			row.type:SetTextColor(CLR.white)
+			row.type:SetTextColor(ammo_type_color(rd.type))
 			row.ap:SetText(rd.ap or "")
 			row.ap:SetTextColor(ap_display_color(rd.ap_val or 0, data.silencer))
 			for t = 1, NUM_TORSO_TIERS do
@@ -1491,7 +1644,8 @@ local function add_details_damage_section(sheet, obj)
 	end
 
 	local sec = ini_sys:r_string_ex(obj:section(), "parent_section") or obj:section()
-	if not IsWeapon(obj) or IsItem("fake_ammo_wpn", sec) then
+	-- IsWeapon(sec) crashes on section strings; use ammo_class like GetType.
+	if not ini_sys:r_string_ex(sec, "ammo_class") or IsItem("fake_ammo_wpn", sec) then
 		return
 	end
 
@@ -1670,6 +1824,9 @@ local function build_white_stat_xml(handler, obj, sec, gr, stat)
 	st_cap:SetTextColor(CLR.white)
 
 	local st_txt = STAT_XML:InitTextWnd("item_info:stats_box:prog_txt", st)
+	if gr.name == "ui_dorn_wpn_ammo_torso" or gr.name == "ui_dorn_wpn_stalker_damage" then
+		st_txt:SetTextComplexMode(true)
+	end
 	st_txt:SetText(value)
 	st_txt:SetTextColor(nclr and CLR.stat_neg or CLR.stat_pos)
 
@@ -1712,7 +1869,7 @@ end
 local function itm_details_reset_hook(self, obj)
 	if obj and CONFIG.show_damage_table then
 		local sec = ini_sys:r_string_ex(obj:section(), "parent_section") or obj:section()
-		if IsWeapon(obj) and not IsItem("fake_ammo_wpn", sec) then
+		if ini_sys:r_string_ex(sec, "ammo_class") and not IsItem("fake_ammo_wpn", sec) then
 			self.dorn_details_pending = obj
 		end
 	end
@@ -1725,6 +1882,32 @@ local function itm_details_reset_hook(self, obj)
 end
 
 local details_hook_ok = false
+
+-- Vanilla/Sota UIInfoItem only pre-creates 16 stat rows. Full Dorn + Momopate
+-- can exceed that (max_range + 5 companions + 3 damage); expand once at init.
+local STAT_SLOT_TARGET = 24
+
+local function ensure_stat_slots(info)
+	if not info or not info.stats or not info.stats_dialog then
+		return
+	end
+	local n = #info.stats
+	if n >= STAT_SLOT_TARGET then
+		return
+	end
+	for i = n + 1, STAT_SLOT_TARGET do
+		local slot = {}
+		slot.base = STAT_XML:InitStatic("item_info:stats_box", info.stats_dialog)
+		slot.icon = STAT_XML:InitStatic("item_info:stats_box:icon", slot.base)
+		slot.cap = STAT_XML:InitTextWnd("item_info:stats_box:cap", slot.base)
+		slot.bar2 = STAT_XML:InitProgressBar("item_info:stats_box:prog_bar", slot.base)
+		slot.bar1 = STAT_XML:InitProgressBar("item_info:stats_box:prog_bar", slot.base)
+		slot.txt = STAT_XML:InitTextWnd("item_info:stats_box:prog_txt", slot.base)
+		slot.comp = STAT_XML:InitTextWnd("item_info:stats_box:compare", slot.base)
+		slot.base:Show(false)
+		info.stats[i] = slot
+	end
+end
 
 local function install_details_hook()
 	if not ui_itm_details or not ui_itm_details.UIItemSheet then
@@ -1754,6 +1937,7 @@ local function uiinfo_init_hook(self, owner, delay)
 	base_uiinfo_init(self, owner, delay)
 
 	tracked_infos[self] = true
+	ensure_stat_slots(self)
 
 	if self.dorn_wpn_damage then
 		return
@@ -1814,6 +1998,79 @@ local function on_console_execute(cmd)
 	end
 end
 
+-- ADV/Sota replace utils_ui.stats_table.weapon on difficulty change; re-apply
+-- Dorn rows whenever their override runs so companions/placement survive.
+local function hook_stats_table_override()
+	if not ish_item_stats or not ish_item_stats.override_stats_table then
+		return
+	end
+	if ish_item_stats.dorn_weapon_tooltip_wrapped then
+		return
+	end
+	local prev = ish_item_stats.override_stats_table
+	ish_item_stats.override_stats_table = function()
+		prev()
+		apply_enhanced_weapon_stats()
+		for info in pairs(tracked_infos) do
+			info.id = nil
+			info.section = nil
+		end
+	end
+	ish_item_stats.dorn_weapon_tooltip_wrapped = true
+end
+
+-- Crosshair rangefinder (Development MCM). Casts along camera look; ignores actor.
+-- Flags 3 = static + objects (same as cover-tilt / xcombat rqtBoth).
+local RANGEFINDER_MAX_M = 2000
+local rangefinder_pick = nil
+
+local function crosshair_range_m()
+	local d = device()
+	if not d or not d.cam_pos or not d.cam_dir then
+		return nil
+	end
+	if not rangefinder_pick then
+		rangefinder_pick = ray_pick()
+	end
+	local pick = rangefinder_pick
+	pick:set_flags(3)
+	pick:set_position(vector():set(d.cam_pos))
+	pick:set_direction(vector():set(d.cam_dir))
+	pick:set_range(RANGEFINDER_MAX_M)
+	if db and db.actor then
+		pick:set_ignore_object(db.actor)
+	end
+	if not pick:query() then
+		return nil
+	end
+	local dist = pick:get_distance()
+	if not dist or dist <= 0 then
+		return nil
+	end
+	return dist
+end
+
+local function on_actor_update()
+	if not CONFIG.rangefinder then
+		return
+	end
+	if not (DORN and DORN.dbg and DORN.dbg.overlay) then
+		return
+	end
+	local dist = crosshair_range_m()
+	local msg
+	if dist then
+		if dist < 10 then
+			msg = string.format("Range  %.1fm", dist)
+		else
+			msg = string.format("Range  %.0fm", dist)
+		end
+	else
+		msg = string.format("Range  >%dm", RANGEFINDER_MAX_M)
+	end
+	DORN.dbg.overlay(MOD_ID, 1, msg, "cyan")
+end
+
 function on_game_start()
 	local loader = _G[DORN_COMMON_VERSION]
 	if loader then
@@ -1825,13 +2082,16 @@ function on_game_start()
 	on_option_change()
 	install_ui_hooks()
 	install_details_hook()
+	hook_stats_table_override()
 
 	RegisterScriptCallback("on_console_execute", on_console_execute)
 	RegisterScriptCallback("on_option_change", on_option_change)
+	RegisterScriptCallback("actor_on_update", on_actor_update)
 
 	log_once("startup", string.format(
-		"loaded: dorn=%s, ui_hooks=%s, details_hook=%s, table=%s, hit=%s, mutant=%s",
+		"loaded: dorn=%s, ui_hooks=%s, details_hook=%s, table=%s, hit=%s, mutant=%s, place=%s, stats_mod=%s",
 		tostring(DORN ~= nil), tostring(ui_hooks_ok), tostring(details_hook_ok),
 		tostring(CONFIG.show_damage_table), tostring(CONFIG.show_hit_power),
-		tostring(CONFIG.show_mutant_damage)))
+		tostring(CONFIG.show_mutant_damage), tostring(CONFIG.stat_row_placement),
+		tostring(dorn_weapon_tooltip_stats and dorn_weapon_tooltip_stats.NAME ~= nil)))
 end
