@@ -2,9 +2,9 @@
 
 ## Summary by armor value
 
-102 visual profiles. Chip = average `hit_fraction_npc` (% of damage that still applies on a failed pen). Table name = Dorn tooltip column label when that value is shown.
+**Count** = unique capture models (`models\capture\*.ltx` stems) that at least one actor visual uses in `grok_bo_models_capture.ltx`. Bone profile sections that exist only in `grok_bo_bone_profiles.ltx` and are never a `model_path` (e.g. `stalker_dolg_4_omon`) are excluded. Chip = average `hit_fraction_npc` (% of damage that still applies on a failed pen). Table name = Dorn tooltip column label when that value is shown.
 
-**GAMMA repair** = modal `repair_type` of outfits those visuals tend to drop (`death_outfits` → Outfits Balances). Ladder is novice → light → medium → heavy → exo (Nosorog is still exo). Percents below are among mapped profiles at that bone value (some visuals have no death-outfit join).
+**GAMMA repair** = modal `repair_type` of outfits those visuals tend to drop (`death_outfits` → Outfits Balances). Ladder is novice → light → medium → heavy → exo (Nosorog is still exo). Percents below are among mapped models at that bone value (some visuals have no death-outfit join).
 
 **Ammo pen** = rough share of standard GBOOBS firearm ammo that pens that bone armor at 20 m (`k_ap × ap_scale / range_atten ≥ armor`). Uses the **live GBOOBS** `grok_bo` math (no CQC `×10`, no difficulty / `×0.80` tail — GBOOBS overwrites CQC’s script in the modlist). Head values model `bip01_head` (no eye/eyelid AP boost). Excludes `_bad` / `_verybad`, knives, batteries, and grenades (~48 rounds). Rounded to nearest 5%.
 
@@ -12,16 +12,16 @@
 
 | Table name | Armor | Count | Avg chip | Ammo pen | GAMMA repair |
 |---|---:|---:|---:|---:|---|
-| Min | 0.011 | 9 | 0% | ~100% | **novice** (about 89%) — clean novice bucket |
-| Lit | 0.075 | 8 | 62% | ~95% | **medium** (about 75%), novice (about 25%) — leans medium; army/soldier minority is novice (`army_outfit`) |
-| Lit+ | 0.100 | 11 | 50% | ~85% | **medium** (about 75% of mapped), some light/novice (about 12% each) — leans medium (Sunrise-ish); a few unmapped |
+| Min | 0.011 | 9 | 85% | ~100% | **novice** (about 89%) — clean novice bucket |
+| Lgt | 0.075 | 6 | 60% | ~95% | **medium** (about 75%), novice (about 25%) — leans medium; army/soldier minority is novice (`army_outfit`) |
+| Lgt+ | 0.100 | 8 | 50% | ~85% | **medium** (about 75% of mapped), some light/novice (about 12% each) — leans medium (Sunrise-ish); a few unmapped |
 | - | 0.125 | 1 | 40% | ~75% | **medium** (1/1) |
-| Med | 0.150 | 30 | 48% | ~70% | **medium** (about 87% of mapped) — best medium representative; light about 9%, novice about 4% |
-| Med+ | 0.200 | 17 | 36% | ~50% | **medium** (about 75% of mapped), heavy about 17%, exo about 8% — still medium overall, but messiest mid-tier (Berill/SEVA vs proto pull) |
+| Mid | 0.150 | 24 | 48% | ~70% | **medium** (about 87% of mapped) — best medium representative; light about 9%, novice about 4% |
+| Mid+ | 0.200 | 13 | 37% | ~50% | **medium** (about 75% of mapped), heavy about 17%, exo about 8% — still medium overall, but messiest mid-tier (Berill/SEVA vs proto pull) |
 | Hvy | 0.250 | 10 | 30% | ~40% | **heavy** (100% of mapped) — clean start of heavy (SKAT / assault vest / `light_*` outfits) |
 | - | 0.300 | 1 | 30% | ~30% | **heavy** (exolight) |
 | - | 0.350 | 2 | 22% | ~25% | **heavy** (small n) |
-| Hvy+ | 0.400 | 5 | 20% | ~20% | **heavy** (100% of mapped) — mid-heavy / exolight-class, **not** exo kit |
+| Hvy+ | 0.400 | 4 | 20% | ~20% | **heavy** (100% of mapped) — mid-heavy / exolight-class, **not** exo kit |
 | - | 0.430 | 1 | 15% | ~15% | **exo** (Freedom heavy / full exo drop) |
 | Exo | 0.550 | 5 | 15% | ~10% | **exo** — standard full exo |
 | Max | 0.650 | 2 | 15% | ~10% | **exo** — top exo / Nosorog (same exo kit) |
@@ -34,10 +34,10 @@
 
 | Table name | Armor | Count | Avg chip | Ammo pen | GAMMA repair |
 |---|---:|---:|---:|---:|---|
-| Min | 0 | 47 | n/a (always full damage) | ~100% | mixed (body drives drop class) — not a useful repair signal |
-| Lit | 0.150 | 7 | 41% | ~70% | mostly tracks **medium** bodies |
-| Med | 0.200 | 18 | 44% | ~60% | mostly **medium** bodies |
-| Hvy | 0.300 | 29 | 34% | ~35% | mixed medium/heavy/exo bodies — weak repair signal |
+| Min | 0 | 39 | n/a (always full damage) | ~100% | mixed (body drives drop class) — not a useful repair signal |
+| Lgt | 0.150 | 7 | 41% | ~70% | mostly tracks **medium** bodies |
+| Mid | 0.200 | 13 | 44% | ~60% | mostly **medium** bodies |
+| Hvy | 0.300 | 26 | 33% | ~35% | mixed medium/heavy/exo bodies — weak repair signal |
 | Max | 0.350 | 1 | 15% | ~20% | **exo** (Nosorog) |
 
 Head bone armor does not track repair kits cleanly; same suit family wears many helm variants.
@@ -53,9 +53,9 @@ Source chain (GBO / CQC):
 **Torso armor** = `bip01_spine` bone armor (compared to combat AP in GBO damage).
 **Head armor** = `bip01_head` (no eye/eyelid AP boost in these columns).
 
-Count: **105** visual armor profiles. Torso range: **0.011–0.650**. Head range: **0–0.350**.
+Count: **86** unique capture models used by actor visuals (105 bone profile sections exist; 19 are never a `model_path`). Torso range: **0.011–0.650**. Head range: **0–0.350**.
 
-**Naming:** Labels are **death-outfit inventory display names** inferred from visuals that share each bone profile (`models_capture` → `outfit_by_visual`). One profile can drop several faction kits; the name is the canonical / most-common player outfit for that look (e.g. SSP → SSP-99, not the internal `stalker_ssp` id). Combat armor still comes from the bone profile — loot can differ. Unmapped profiles end with `[?]`.
+**Naming:** Labels are **death-outfit inventory display names** inferred from visuals that share each bone profile (`models_capture` → `outfit_by_visual`). One profile can drop several faction kits; the name is the canonical / most-common player outfit for that look (e.g. SSP → SSP-99, not the internal `stalker_ssp` id). Combat armor still comes from the bone profile — loot can differ. Unmapped profiles end with `[?]`. Detail rows below still list bone profiles (including unused ones) for reference; **Count** columns use unique used models only.
 
 ### Profiles by torso armor
 
@@ -165,7 +165,7 @@ Count: **105** visual armor profiles. Torso range: **0.011–0.650**. Head range
 | Monolith Exoskeleton | 0.550 | 0.300 | 0.15 | 0.70 | Monolith Exoskeleton |
 | PSZ-10d Exoskeleton (dolg 4) | 0.650 | 0.300 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
 | Military Stalker Nosorog | 0.650 | 0.350 | 0.15 | 0.70 | Military Stalker Nosorog |
-| PSZ-10d Exoskeleton (dolg 4 omon) | 0.650 | 0.350 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
+| PSZ-10d Exoskeleton (dolg 4 omon) [unused model] | 0.650 | 0.350 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
 
 ### Profiles by head armor
 
@@ -277,36 +277,36 @@ Same 105 profiles, sorted by **head** then torso.
 | Monolith Exoskeleton | 0.300 | 0.550 | 0.15 | 0.70 | Monolith Exoskeleton |
 | PSZ-10d Exoskeleton (dolg 4) | 0.300 | 0.650 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
 | Military Stalker Nosorog | 0.350 | 0.650 | 0.15 | 0.70 | Military Stalker Nosorog |
-| PSZ-10d Exoskeleton (dolg 4 omon) | 0.350 | 0.650 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
+| PSZ-10d Exoskeleton (dolg 4 omon) [unused model] | 0.350 | 0.650 | 0.15 | 0.70 | PSZ-10d Exoskeleton |
 
 ## By torso armor value
 
-Curated examples for each bone armor bucket (at least 3 when the bucket has ≥3 profiles and ≥3 distinct DB names; otherwise all available; max 10). Names are exact [GAMMA 0.9.5 outfit DB](https://stalker-gamma-db.com/db/gamma-0.9.5/outfits?lang=en&sort=ui_inv_ap_res&dir=desc) display names. Prefer outfits whose name (and name-family, e.g. all Leather Jackets) sits mostly or entirely in this bucket — cross-tier names are used only to meet the minimum of 3.
+Curated examples for each bone armor bucket (at least 3 when the bucket has ≥3 models and ≥3 distinct DB names; otherwise all available; max 10). Names are exact [GAMMA 0.9.5 outfit DB](https://stalker-gamma-db.com/db/gamma-0.9.5/outfits?lang=en&sort=ui_inv_ap_res&dir=desc) display names. Prefer outfits whose name (and name-family, e.g. all Leather Jackets) sits mostly or entirely in this bucket — cross-tier names are used only to meet the minimum of 3.
 
-| Torso armor | Profiles | Representative outfits |
+| Torso armor | Models | Representative outfits |
 |---:|---:|---|
 | 0.011 | 9 | Leather Jacket, Black Leather Jacket, Heavy Brown Overcoat, Overcoat |
-| 0.075 | 8 | Military Service Outfit, SSP-99 Bodysuit, Monolith X-18 Suit, Overcoat |
-| 0.100 | 12 | "Sunrise" Stalker Suit, CS-1 Body Armor, Wind of Freedom |
+| 0.075 | 6 | Military Service Outfit, SSP-99 Bodysuit, Monolith X-18 Suit |
+| 0.100 | 8 | "Sunrise" Stalker Suit, CS-1 Body Armor, Wind of Freedom |
 | 0.125 | 1 | CS-2a Body Armor |
-| 0.150 | 31 | Mercenary LC Suit, PS5-M Universal Protection Suit, Sentinel of Freedom, Fenced LC Suit, ISRIT Guard Jumpsuit, Monolith Scientific Suit, PS5-9Md Universal Scientific Suit, Tactical Stalker Suit, Monolith X-18 Suit, SEVA Bodysuit |
-| 0.200 | 17 | Berill-5M Armored Suit, CS-3a Body Armor, Guardian of Freedom, "Sunrise" Exoskeleton, SEVA Bodysuit |
+| 0.150 | 24 | Mercenary LC Suit, PS5-M Universal Protection Suit, Sentinel of Freedom, Fenced LC Suit, ISRIT Guard Jumpsuit, Monolith Scientific Suit, PS5-9Md Universal Scientific Suit, Tactical Stalker Suit, SEVA Bodysuit |
+| 0.200 | 13 | Berill-5M Armored Suit, CS-3a Body Armor, Guardian of Freedom, "Sunrise" Exoskeleton |
 | 0.250 | 10 | Interceptor Body Armor, Skat-9 Armored Suit |
 | 0.300 | 1 | Exosuit |
 | 0.350 | 2 | Skat-9 Armored Suit |
-| 0.400 | 5 | PSZ-7p Shell Armor, Mercenary Exosuit, Monolith Exosuit, Exosuit |
+| 0.400 | 4 | PSZ-7p Shell Armor, Mercenary Exosuit, Monolith Exosuit |
 | 0.430 | 1 | Paragon of Freedom |
 | 0.550 | 5 | Exoskeleton, Mercenary Exoskeleton, Monolith Exoskeleton |
-| 0.650 | 3 | Military Stalker Nosorog, PSZ-10d Exoskeleton |
+| 0.650 | 2 | Military Stalker Nosorog, PSZ-10d Exoskeleton |
 
 ## By head armor value
 
 Same selection rules as torso (exact DB name; prefer names that do not span several head armor values; fill to ≥3 when possible). Head 0.000 is “no head bone armor” — many open-face / no-helm looks.
 
-| Head armor | Profiles | Representative outfits |
+| Head armor | Models | Representative outfits |
 |---:|---:|---|
-| 0.000 | 49 | Overcoat, Heavy Brown Overcoat, Fenced LC Suit, ISRIT Guard Jumpsuit, Tactical Stalker Suit, Black Leather Jacket, Leather Jacket, Interceptor Body Armor, Monolith X-18 Suit, "Sunrise" Exoskeleton |
+| 0.000 | 39 | Overcoat, Heavy Brown Overcoat, Fenced LC Suit, ISRIT Guard Jumpsuit, Tactical Stalker Suit, Black Leather Jacket, Leather Jacket, Monolith X-18 Suit, "Sunrise" Exoskeleton |
 | 0.150 | 7 | Monolith Scientific Suit, SSP-99 Bodysuit, PS5-9Md Universal Scientific Suit, SEVA Bodysuit |
-| 0.200 | 18 | CS-1 Body Armor, CS-2a Body Armor, CS-3a Body Armor, Guardian of Freedom, Sentinel of Freedom, Mercenary LC Suit, Wind of Freedom, Berill-5M Armored Suit, "Sunrise" Stalker Suit, PS5-M Universal Protection Suit |
-| 0.300 | 29 | Exosuit, Mercenary Exosuit, Monolith Exosuit, Paragon of Freedom, Mercenary Exoskeleton, Monolith Exoskeleton, Exoskeleton, PSZ-7p Shell Armor, Skat-9 Armored Suit, Interceptor Body Armor |
-| 0.350 | 2 | Military Stalker Nosorog, PSZ-10d Exoskeleton |
+| 0.200 | 13 | CS-1 Body Armor, CS-2a Body Armor, CS-3a Body Armor, Guardian of Freedom, Sentinel of Freedom, Mercenary LC Suit, Wind of Freedom, Berill-5M Armored Suit, "Sunrise" Stalker Suit, PS5-M Universal Protection Suit |
+| 0.300 | 26 | Exosuit, Mercenary Exosuit, Monolith Exosuit, Paragon of Freedom, Mercenary Exoskeleton, Monolith Exoskeleton, Exoskeleton, PSZ-7p Shell Armor, Skat-9 Armored Suit, Interceptor Body Armor |
+| 0.350 | 1 | Military Stalker Nosorog |

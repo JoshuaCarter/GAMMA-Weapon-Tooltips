@@ -1,212 +1,50 @@
 <?xml version="1.0" encoding="windows-1251"?>
 
 <string_table>
+	<!-- Menu title -->
 	<string id="ui_mcm_menu_dorn_weapon_tooltip">
 		<text>Dorn's Weapon Tooltip</text>
 	</string>
+
+	<!-- ===== Main ===== -->
 	<string id="ui_mcm_dorn_weapon_tooltip_main_section">
 		<text>Main</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_info_section">
-		<text>Info</text>
+	<string id="ui_mcm_dorn_weapon_tooltip_hdr_general">
+		<text>General</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_development_section">
-		<text>Development</text>
+	<string id="ui_mcm_dorn_weapon_tooltip_ammo_order">
+		<text>Ammo row ordering</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_hdr_notes">
-		<text>Important Notes</text>
+	<string id="dorn_weapon_tooltip_main_ammo_order_lst_default">
+		<text>Default (ammo icons order)</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_info_notes">
-		<text>
-			- Uses ballistic calculations from GBOOBS (not CQC).
-			\n- Assumed range is set by MCM (default 20m). Weapon/barrel condition is treated as 100% unless the matching condition toggle is on.
-			\n- Damage numbers also always factor in current difficulty and weapon hit power.
-			\n- No caclulations account for external/non-intrinsic factors such as attachments, artifacts, medicines, etc.
-			\n- Ammo rows (damage table, Stalker Damage, and Mutant Damage) are ordered as "DMG desc" or "AP desc" depending on mcm config.
-			\n- This mod ships %c[dark_gray]mod_system_zzzz_dorn_gboobs_ammo_restore.ltx%c[default] to undo leftover CQC DLTX on three ammo sections (23x75 shrapnel, 23x75 barrikada, .338 Federal) so their stats match GBOOBS again (without this, AP is 10x lower than it should be).
-		</text>
+	<string id="dorn_weapon_tooltip_main_ammo_order_lst_damage">
+		<text>DMG DESC (HP/FMJ/AP)</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_ammo_order_lst_ap">
+		<text>AP DESC (AP/FMJ/HP)</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_calc_range">
+		<text>Assumed range (meters) for damage calculations</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_stat_row_placement">
+		<text>Where to place new stats list rows</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_stat_row_placement_lst_inline">
+		<text>Inline under related stat</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_stat_row_placement_lst_after">
+		<text>After base stats</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_hdr_damage_table">
-		<text>Damage table</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_info_damage_table">
-		<text>
-			A table showing how much damage this weapon does with each ammo type vs different body parts and armor values.
-			\n(see Useful Info for torso/head armor floats and example outfits)
-			\n
-			\n%c[d_green]Columns%c[default]:
-			\n - %c[d_blue]Type%c[default]: Ammo type used for damage calculations on this row.
-			\n - %c[d_blue]AP%c[default]: Armor penetration colored %c[dark_gray]grey%c[default] -> %c[yellow]yellow%c[default] by how well it punches through the listed armor values.
-			\n - %c[d_blue]vs Torso%c[default]: Damage for a given ammor vs a real torso armor value. Damage colored %c[dark_gray]grey%c[default] -> %c[d_green]green%c[default] for how close the value is to max damage for this weapon/ammo/bone.
-			\n - %c[d_blue]vs Head%c[default]: Same as %c[d_blue]vs Torso%c[default], but vs real head armor values, and with the x4 headshot damage mult factored in.
-			\n
-			\n%c[d_green]Table notes%c[default]:
-			\n - Damage numbers are mainly a reflection of your opening salvo, as once an armor segment (head/torso+arms/legs) is broken, you will do near-full damage to that segment regardless of AP.
-			\n - Column headers can show short armor-class names (Min/Lit/...) or the raw bone-armor floats used in the math.
-			\n - Chip damage (failed pen) uses the average hit_fraction for profiles at that exact armor value only.
-			\n - Full armor-value list (including rare floats skipped as columns) is under Useful Info.
-			\n
-			\n%c[d_green]Math%c[default]:
-			\n - %c[d_blue]range_factor%c[default] = 1 + (range / 200) x k_air x 0.5 / (1 - k_air + 0.1)
-			\n - %c[d_blue]bone_mult%c[default] = 1.0 (torso) / 4.0 (head)
-			\n - %c[d_blue]power%c[default] = (hit_power / %c[d_blue]range_factor%c[default]) x ammo_k_hit x %c[d_blue]bone_mult%c[default] x tier_ap_scale x 1.1 x pellets x barrel_cond x difficulty x 100
-			\n - %c[d_blue]combat_ap%c[default] = k_ap x tier_ap_scale x barrel_cond / range_factor
-			\n - %c[d_red]damage%c[default] = %c[d_blue]power%c[default]
-			\n - IF %c[d_blue]combat_ap%c[default] >= armor THEN damage x= chip_fraction END
-		</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_hdr_enhanced_stats">
-		<text>Enhanced weapon stats</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_info_enhanced_stats">
-		<text>
-			New optional stat list items:
-			\n
-			\n%c[d_green]Hit Power%c[default]
-			\n - New stat that shows what % of base ammo damage this weapon inflicts.
-			\n - Useful for comparing weapons that use the same ammo types.
-			\n
-			\n%c[d_green]Stalker Damage%c[default]
-			\n - New stat for per-ammo torso damage vs stalkers (does not account for armor).
-			\n - Math: (hit_power / range_factor) x ammo_k_hit x torso_mult (1.0) x 1.1 x pellets x barrel_cond x difficulty.
-			\n
-			\n%c[d_green]Mutant Damage%c[default]
-			\n - New stat for per-ammo damage vs mutants (before mutant specific modifiers).
-			\n - Math: (hit_power / range_factor) x ammo_k_hit x pellets x mutant_mult (0.9) x ammo_mult x barrel_cond x difficulty.
-			\n
-			\n%c[d_green]Base Spread Degrees%c[default]
-			\n - New stat for ADS bullet dispersion in degrees.
-			\n - E.g. "0.35" means that the final trajectory of the bullet can be up to 0.35 degrees off center in any direction.
-			\n
-			\n%c[d_green]Movement Spread Degrees%c[default]
-			\n - New stat for hip-fire spread while walking and running.
-			\n - Functions like Base Spread Degrees, but isn't applied while ADS.
-			\n - Stacks with Base Spread Degrees.
-			\n
-			\n%c[d_green]Bullet Drop%c[default]
-			\n - New stat for how far down a bullet will drop after traveling 200m.
-			\n
-			\n%c[d_green]Average Weapon Wear%c[default]
-			\n - New stat for condition worn down per shot (average of all ammo types).
-			\n
-			\n%c[d_green]Burst Control%c[default]
-			\n - New stat for how many consecutive ADS shots (at max fire rate) it takes for the camera to climb 3 degrees.
-		</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_hdr_damage_notes">
-		<text>Useful Info</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_info_damage_notes">
-		<text>
-			%c[d_green]Silencers%c[default]:
-			\n - Do not change combat damage or AP.
-			\n - Boomsticks mod still multiplies muzzle velocity x0.9 and cam recoil x0.82 when attached.
-			\n
-			\n%c[d_green]NPC bone_mult%c[default]:
-			\n Damage is multiplied according to where the hit lands on an NPC.
-			\n - %c[d_blue]Eyes%c[default]: 500%
-			\n - %c[d_blue]Head%c[default]: 400%
-			\n - %c[d_blue]Neck%c[default]: 250%
-			\n - %c[d_blue]Torso%c[default]: 100%
-			\n - %c[d_blue]Pelvis%c[default]: 90%
-			\n - %c[d_blue]Upper arms%c[default]: 80%
-			\n - %c[d_blue]Forearms%c[default]: 70%
-			\n - %c[d_blue]Hands%c[default]: 60%
-			\n - %c[d_blue]Legs%c[default]: 60%
-			\n - %c[d_blue]Feet%c[default]: 50%
-			\n
-			\n%c[d_green]NPC bone armor%c[default] (102 visual profiles). Chip = average hit_fraction at that exact armor (% of damage that still applies on a failed pen). Named rows are damage-table columns; rows marked n/a exist in-game but are skipped in the table (too rare).
-			\nAppearances are example loot outfits that tend to sit in that bone-armor bucket (exact GAMMA DB names; not every NPC look).
-			\nHead armor does not track repair kits cleanly; the same suit family often wears several helm variants.
-			\n
-			\n%c[d_green]Torso armors%c[default] in base GAMMA
-			\n | %c[d_blue]table name%c[default] | %c[yellow]armor x count%c[default] | %c[d_green]avg chip%c[default] | %c[orange]% of all ammos that pen%c[default] | appearances (partial, to help visualize) |
-			-------------------------------------------------------------------------------------------
-			\n | %c[d_blue]Min%c[default]  | %c[yellow]0.011 x9%c[default]  | %c[d_green]85%c[default]% | %c[orange]100%c[default]% | Leather Jacket, Black Leather Jacket, Heavy Brown Overcoat, Overcoat |
-			\n | %c[d_blue]Lit%c[default]  | %c[yellow]0.075 x8%c[default]  | %c[d_green]62%c[default]% | %c[orange]95%c[default]%  | Military Service Outfit, SSP-99 Bodysuit, Monolith X-18 Suit, Overcoat |
-			\n | %c[d_blue]Lit+%c[default] | %c[yellow]0.100 x11%c[default] | %c[d_green]50%c[default]% | %c[orange]85%c[default]%  | "Sunrise" Stalker Suit, CS-1 Body Armor, Wind of Freedom |
-			\n | %c[d_grey]n/a%c[default]  | %c[yellow]0.125 x1%c[default]  | %c[d_green]40%c[default]% | %c[orange]75%c[default]%  | CS-2a Body Armor |
-			\n | %c[d_blue]Med%c[default]  | %c[yellow]0.150 x30%c[default] | %c[d_green]48%c[default]% | %c[orange]70%c[default]%  | Mercenary LC Suit, PS5-M Universal Protection Suit, Sentinel of Freedom, Fenced LC Suit, ISRIT Guard Jumpsuit, Monolith Scientific Suit, PS5-9Md Universal Scientific Suit, Tactical Stalker Suit, Monolith X-18 Suit, SEVA Bodysuit |
-			\n | %c[d_blue]Med+%c[default] | %c[yellow]0.200 x17%c[default] | %c[d_green]36%c[default]% | %c[orange]50%c[default]%  | Berill-5M Armored Suit, CS-3a Body Armor, Guardian of Freedom, "Sunrise" Exoskeleton, SEVA Bodysuit |
-			\n | %c[d_blue]Hvy%c[default]  | %c[yellow]0.250 x10%c[default] | %c[d_green]30%c[default]% | %c[orange]40%c[default]%  | Interceptor Body Armor, Skat-9 Armored Suit |
-			\n | %c[d_grey]n/a%c[default]  | %c[yellow]0.300 x1%c[default]  | %c[d_green]30%c[default]% | %c[orange]30%c[default]%  | Exosuit |
-			\n | %c[d_grey]n/a%c[default]  | %c[yellow]0.350 x2%c[default]  | %c[d_green]22%c[default]% | %c[orange]25%c[default]%  | Skat-9 Armored Suit |
-			\n | %c[d_blue]Hvy+%c[default] | %c[yellow]0.400 x5%c[default]  | %c[d_green]20%c[default]% | %c[orange]20%c[default]%  | PSZ-7p Shell Armor, Mercenary Exosuit, Monolith Exosuit, Exosuit |
-			\n | %c[d_grey]n/a%c[default]  | %c[yellow]0.430 x1%c[default]  | %c[d_green]15%c[default]% | %c[orange]15%c[default]%  | Paragon of Freedom |
-			\n | %c[d_blue]Exo%c[default]  | %c[yellow]0.550 x5%c[default]  | %c[d_green]15%c[default]% | %c[orange]10%c[default]%  | Exoskeleton, Mercenary Exoskeleton, Monolith Exoskeleton |
-			\n | %c[d_blue]Max%c[default]  | %c[yellow]0.650 x2%c[default]  | %c[d_green]15%c[default]% | %c[orange]10%c[default]%  | Military Stalker Nosorog, PSZ-10d Exoskeleton |
-			\n
-			\n%c[d_green]Head armors%c[default] in base GAMMA
-			\n | %c[d_blue]table name%c[default] | %c[yellow]armor x count%c[default] | %c[d_green]avg chip%c[default] | %c[orange]% of all ammos that pen%c[default] | appearances (partial, to help visualize) |
-			-------------------------------------------------------------------------------------------
-			\n | %c[d_blue]Min%c[default] | %c[yellow]0 x47%c[default] | %c[d_green]always full damage%c[default] | %c[orange]100%c[default]% | Overcoat, Heavy Brown Overcoat, Fenced LC Suit, ISRIT Guard Jumpsuit, Tactical Stalker Suit, Black Leather Jacket, Leather Jacket, Interceptor Body Armor, Monolith X-18 Suit, "Sunrise" Exoskeleton |
-			\n | %c[d_blue]Lit%c[default] | %c[yellow]0.150 x7%c[default] | %c[d_green]41%c[default]% | %c[orange]70%c[default]% | Monolith Scientific Suit, SSP-99 Bodysuit, PS5-9Md Universal Scientific Suit, SEVA Bodysuit |
-			\n | %c[d_blue]Med%c[default] | %c[yellow]0.200 x18%c[default] | %c[d_green]44%c[default]% | %c[orange]60%c[default]% | CS-1 Body Armor, CS-2a Body Armor, CS-3a Body Armor, Guardian of Freedom, Sentinel of Freedom, Mercenary LC Suit, Wind of Freedom, Berill-5M Armored Suit, "Sunrise" Stalker Suit, PS5-M Universal Protection Suit |
-			\n | %c[d_blue]Hvy%c[default] | %c[yellow]0.300 x29%c[default] | %c[d_green]34%c[default]% | %c[orange]35%c[default]% | Exosuit, Mercenary Exosuit, Monolith Exosuit, Paragon of Freedom, Mercenary Exoskeleton, Monolith Exoskeleton, Exoskeleton, PSZ-7p Shell Armor, Skat-9 Armored Suit, Interceptor Body Armor |
-			\n | %c[d_blue]Max%c[default] | %c[yellow]0.350 x1%c[default] | %c[d_green]15%c[default]% | %c[orange]20%c[default]% | Military Stalker Nosorog, PSZ-10d Exoskeleton |
-			\n
-			\n%c[d_green]NPC health%c[default] is one shared pool (not split across limbs).
-			\n - Every stalker has the same max HP (no faction damage resists in live grok_bo).
-			\n
-			\n%c[d_green]NPC armor%c[default] comes from the visual model they are wearing (the outfit you see on them), not from whatever armor item they happen to drop.
-			\n - Loot and appearance usually roughlymatch (i.e. exo NPCs usually drop exo armor), but many models with higher protection drop armors that areless protective for the player, which makes neatly dividing NPC models into armor tiers impossible.
-			\n
-			\n%c[d_green]Mutants%c[default] take the same damage everywhere, except for designatedweak points.
-			\n - %c[d_blue]damage%c[default] = (hit_power / range_factor) x ammo_k_hit x pellets x mutant_mult (0.9) x ammo_mult x species_mult x weak_spot_mult x barrel_cond x difficulty
-			\n
-			\n%c[d_green]Mutant multipliers%c[default] (species_mult / weak_spot_mult):
-			\n - %c[d_blue]Pseudogiant%c[default]: 2.0 / 2.5
-			\n - %c[d_blue]Fracture%c[default]: 0.65 / 2.0
-			\n - %c[d_blue]Zombie%c[default]: 0.8 / 2.0
-			\n - %c[d_blue]Chimera%c[default]: 0.85 / 2.0
-			\n - %c[d_blue]Bloodsucker%c[default]: 0.85 / 1.4
-			\n - %c[d_blue]Psysucker%c[default]: 0.85 / 1.6
-			\n - %c[d_blue]Lurker%c[default]: 0.85 / 1.5
-			\n - %c[d_blue]Boar%c[default]: 0.9 / none
-			\n - %c[d_blue]Flesh%c[default]: 0.9 / 1.3
-			\n - %c[d_blue]Snork%c[default]: 0.95 / 2.0
-			\n - %c[d_blue]Other mutants%c[default]: 1.0 / none
-			\n
-			\n%c[d_green]Ammo mult%c[default] (0.85 for any ammo not listed):
-			\n - 2.5: 23x75 barrikada
-			\n - 2.3: .357 Magnum HP
-			\n - 1.4: 12x76 zhekan
-			\n - 1.25: .45 Hydro
-			\n - 1.2: .45 FMJ
-			\n - 1.1: 7.62x25 PS
-			\n - 1.0: 9x19 PBP, 9x18 PMM, 5.45 EP, 5.56 SS190
-			\n - 0.78: Buckshot 12x70 / 20x70, 23x75 shrapnel
-		</text>
-	</string>
-	<string id="ui_dorn_wpn_hit_power">
-		<text>Hit Power</text>
-	</string>
-	<string id="ui_dorn_wpn_stalker_damage">
-		<text>Stalker Damage</text>
-	</string>
-	<string id="ui_dorn_wpn_ammo_torso">
-		<text>Mutant Damage</text>
-	</string>
-	<string id="ui_dorn_wpn_base_spread">
-		<text>Base Spread Degrees</text>
-	</string>
-	<string id="ui_dorn_wpn_movement_spread">
-		<text>Movement Spread Degrees</text>
-	</string>
-	<string id="ui_dorn_wpn_weapon_wear">
-		<text>Average Weapon Wear</text>
-	</string>
-	<string id="ui_dorn_wpn_burst_control">
-		<text>Burst Control</text>
-	</string>
-	<string id="ui_dorn_wpn_bullet_drop">
-		<text>Bullet Drop</text>
+		<text>Damage Table</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_show_damage_table">
 		<text>Show damage table</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_column_headers">
-		<text>Damage column headers</text>
+		<text>Damage table column headers</text>
 	</string>
 	<string id="dorn_weapon_tooltip_main_column_headers_lst_names">
 		<text>Armor tier names</text>
@@ -214,20 +52,11 @@
 	<string id="dorn_weapon_tooltip_main_column_headers_lst_raw">
 		<text>Raw armor values</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_ammo_order">
-		<text>Damage value ordering</text>
-	</string>
-	<string id="dorn_weapon_tooltip_main_ammo_order_lst_damage">
-		<text>DMG desc (HP/FMJ/AP)</text>
-	</string>
-	<string id="dorn_weapon_tooltip_main_ammo_order_lst_ap">
-		<text>AP desc (AP/FMJ/HP)</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_calc_range">
-		<text>Assumed range (m)</text>
-	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_use_condition_table">
 		<text>Damage table uses weapon condition</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_hdr_stat_list">
+		<text>Stat List</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_use_condition_stats">
 		<text>Damage stats use weapon condition</text>
@@ -253,6 +82,12 @@
 	<string id="ui_mcm_dorn_weapon_tooltip_show_mutant_damage">
 		<text>Show Mutant Damage Stat</text>
 	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_show_muzzle_velocity">
+		<text>%c[dark_gray]Show Muzzle Velocity Stat%c[default]</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_show_bullet_drop">
+		<text>Show Bullet Drop Stat</text>
+	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_show_reliability">
 		<text>%c[dark_gray]Show Reliability Stat%c[default]</text>
 	</string>
@@ -265,11 +100,204 @@
 	<string id="ui_mcm_dorn_weapon_tooltip_show_burst_control">
 		<text>Show Burst Control Stat</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_muzzle_velocity">
-		<text>%c[dark_gray]Show Muzzle Velocity Stat%c[default]</text>
+
+	<!-- In-game tooltip stat labels (Stat List order) -->
+	<string id="ui_dorn_wpn_base_spread">
+		<text>Base Spread Degrees</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_bullet_drop">
-		<text>Show Bullet Drop Stat</text>
+	<string id="ui_dorn_wpn_movement_spread">
+		<text>Movement Spread Degrees</text>
+	</string>
+	<string id="ui_dorn_wpn_hit_power">
+		<text>Hit Power</text>
+	</string>
+	<string id="ui_dorn_wpn_stalker_damage">
+		<text>Stalker Damage</text>
+	</string>
+	<string id="ui_dorn_wpn_ammo_torso">
+		<text>Mutant Damage</text>
+	</string>
+	<string id="ui_dorn_wpn_bullet_drop">
+		<text>Bullet Drop</text>
+	</string>
+	<string id="ui_dorn_wpn_weapon_wear">
+		<text>Average Weapon Wear</text>
+	</string>
+	<string id="ui_dorn_wpn_burst_control">
+		<text>Burst Control</text>
+	</string>
+
+	<!-- ===== Info ===== -->
+	<string id="ui_mcm_dorn_weapon_tooltip_info_section">
+		<text>Info</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_hdr_notes">
+		<text>Important Notes</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_notes">
+		<text>
+			- Uses ballistic calculations from GBOOBS (not CQC).
+			\n- Assumed range is set by MCM (default 20m). Weapon/barrel condition is treated as 100% unless the matching condition toggle is on.
+			\n- Damage numbers also always factor in current difficulty and weapon hit power.
+			\n- No caclulations account for external/non-intrinsic factors such as attachments, artifacts, medicines, etc.
+			\n- Ammo rows (damage table, Stalker Damage, and Mutant Damage) default to the same order as the tooltip ammo icons. MCM can instead sort DMG desc or AP desc.
+			\n- This mod ships %c[dark_gray]mod_system_zzzz_dorn_gboobs_ammo_restore.ltx%c[default] to undo leftover CQC DLTX on three ammo sections (23x75 shrapnel, 23x75 barrikada, .338 Federal) so their stats match GBOOBS again (without this, AP is 10x lower than it should be).
+		</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_hdr_enhanced_stats">
+		<text>Enhanced weapon stats</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_enhanced_stats">
+		<text>
+			New optional stat list items:
+			\n
+			\n%c[d_green]Base Spread Degrees%c[default]
+			\n - New stat for ADS bullet dispersion in degrees.
+			\n - E.g. "0.35" means that the final trajectory of the bullet can be up to 0.35 degrees off center in any direction.
+			\n
+			\n%c[d_green]Movement Spread Degrees%c[default]
+			\n - New stat for hip-fire spread while walking and running.
+			\n - Functions like Base Spread Degrees, but isn't applied while ADS.
+			\n - Stacks with Base Spread Degrees.
+			\n
+			\n%c[d_green]Hit Power%c[default]
+			\n - New stat that shows what % of base ammo damage this weapon inflicts.
+			\n - Useful for comparing weapons that use the same ammo types.
+			\n
+			\n%c[d_green]Stalker Damage%c[default]
+			\n - New stat for per-ammo torso damage vs stalkers (does not account for armor).
+			\n - Math: (hit_power / range_factor) x ammo_k_hit x torso_mult (1.0) x 1.1 x pellets x barrel_cond x difficulty.
+			\n
+			\n%c[d_green]Mutant Damage%c[default]
+			\n - New stat for per-ammo damage vs mutants (before mutant specific modifiers).
+			\n - Math: (hit_power / range_factor) x ammo_k_hit x pellets x mut_mult (0.9) x mut_ammo_mult x barrel_cond x difficulty.
+			\n
+			\n%c[d_green]Bullet Drop%c[default]
+			\n - New stat for how far down a bullet will drop after traveling 200m.
+			\n
+			\n%c[d_green]Average Weapon Wear%c[default]
+			\n - New stat for condition worn down per shot (average of all ammo types).
+			\n
+			\n%c[d_green]Burst Control%c[default]
+			\n - New stat for how many consecutive ADS shots (at max fire rate) it takes for the camera to climb 3 degrees.
+		</text>
+	</string>
+	<!-- hdr_damage_table string is shared with Main -->
+	<string id="ui_mcm_dorn_weapon_tooltip_info_damage_table">
+		<text>
+			A table showing how much damage this weapon does with each ammo type vs different body parts and armor values.
+			\n(see Useful Info for torso/head armor floats and example outfits)
+			\n
+			\n%c[d_green]Columns%c[default]:
+			\n - %c[d_blue]Type%c[default]: Ammo type used for damage calculations on this row. Row order defaults to the tooltip ammo icons order (MCM can sort by DMG or AP instead).
+			\n - %c[d_blue]AP%c[default]: Armor penetration colored %c[dark_gray]grey%c[default] -> %c[yellow]yellow%c[default] by how well it punches through the listed armor values.
+			\n - %c[d_blue]vs Torso%c[default]: Damage for a given ammor vs a real torso armor value. Damage colored %c[dark_gray]grey%c[default] -> %c[d_green]green%c[default] for how close the value is to max damage for this weapon/ammo/bone.
+			\n - %c[d_blue]vs Head%c[default]: Same as %c[d_blue]vs Torso%c[default], but vs real head armor values, and with the x4 headshot damage mult factored in.
+			\n
+			\n%c[d_green]Table notes%c[default]:
+			\n - Damage numbers are mainly a reflection of your opening salvo, as once an armor segment (head/torso+arms/legs) is broken, you will do near-full damage to that segment regardless of AP.
+			\n - Column headers can show short armor-class names (Min/Lgt/...) or the raw bone-armor floats used in the math.
+			\n - avg_hit_fraction uses the average hit_fraction for profiles at that exact armor value only.
+			\n - Full armor-value list (including rare tiers skipped in the table) is under Useful Info section.
+			\n
+			\n%c[d_green]Math%c[default]:
+			\n - %c[d_blue]range_factor%c[default] = 1 + (range / 200) x k_air x 0.5 / (1 - k_air + 0.1)
+			\n - %c[d_blue]bone_mult%c[default] = 1.0 (torso) / 4.0 (head)
+			\n - %c[d_blue]power%c[default] = (hit_power / %c[d_blue]range_factor%c[default]) x ammo_k_hit x %c[d_blue]bone_mult%c[default] x tier_ap_scale x 1.1 x pellets x barrel_cond x difficulty x 100
+			\n - %c[d_blue]combat_ap%c[default] = k_ap x tier_ap_scale x barrel_cond / range_factor
+			\n - IF %c[d_blue]combat_ap%c[default] &lt; armor THEN  %c[d_red]damage%c[default] = %c[d_blue]power%c[default]
+			\n - ELSE %c[d_red]damage%c[default] x= avg_hit_fraction END
+		</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_hdr_damage_notes">
+		<text>Useful Info</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_info_damage_notes">
+		<text>
+			%c[d_green]NPC armor%c[default] comes from the visual model they are wearing (the outfit you see on them), not from whatever armor item they happen to drop.
+			\n - Loot and appearance usually roughly match (i.e. exo NPCs usually drop exo armor), but many models with higher protection drop armors that are very difficult.
+			\n
+			\n%c[d_green]NPC bone_mult%c[default]:
+			\n Damage is multiplied according to where the hit lands on an NPC.
+			\n - %c[d_blue]Eyes%c[default]: 500%
+			\n - %c[d_blue]Head%c[default]: 400%
+			\n - %c[d_blue]Neck%c[default]: 250%
+			\n - %c[d_blue]Torso%c[default]: 100%
+			\n - %c[d_blue]Pelvis%c[default]: 90%
+			\n - %c[d_blue]Upper arms%c[default]: 80%
+			\n - %c[d_blue]Forearms%c[default]: 70%
+			\n - %c[d_blue]Hands%c[default]: 60%
+			\n - %c[d_blue]Legs%c[default]: 60%
+			\n - %c[d_blue]Feet%c[default]: 50%
+			\n
+			\n%c[d_green]NPC bone armor%c[default] is tied to their rendered model (86 unique models).
+			\n - %c[orange]Min damage%c[default] = is just %c[orange]avg_hit_fraction%c[default] as a % of the damage that still applies on a failed pen.
+			\n - %c[d_blue]Tier%c[default] = What this tier is called in the damage table (n/a means not shown).
+			\n - Model count = number of models with that armor value (ignoring some that are unused).
+			\n - Appearances = are example loot outfits that tend to sit in that bone-armor bucket (exact GAMMA DB names; not every NPC look).
+			\n
+			\n%c[d_green]Torso armors%c[default] in base GAMMA
+			\n | %c[d_blue]Tier%c[default] | %c[red]armor%c[default] x model count | %c[orange]Min damage%c[default] | %c[yellow]% of all ammos that pen%c[default] | appearances (partial, to help visualize) |
+			---------------------------------------------------------------------------------------------------------------------------------------------------
+			\n | %c[d_blue]Min%c[default]  | %c[red]0.011%c[default] x9  | %c[orange]85%c[default]% | %c[yellow]100%c[default]% | Leather Jacket, Black Leather Jacket, Heavy Brown Overcoat, Overcoat |
+			\n | %c[d_blue]Lgt%c[default]  | %c[red]0.075%c[default] x6  | %c[orange]60%c[default]% | %c[yellow]95%c[default]%  | Military Service Outfit, SSP-99 Bodysuit, Monolith X-18 Suit |
+			\n | %c[d_blue]Lgt+%c[default] | %c[red]0.100%c[default] x8  | %c[orange]50%c[default]% | %c[yellow]85%c[default]%  | "Sunrise" Stalker Suit, CS-1 Body Armor, Wind of Freedom |
+			\n | %c[d_grey]n/a%c[default]  | %c[red]0.125%c[default] x1  | %c[orange]40%c[default]% | %c[yellow]75%c[default]%  | CS-2a Body Armor |
+			\n | %c[d_blue]Mid%c[default]  | %c[red]0.150%c[default] x24 | %c[orange]48%c[default]% | %c[yellow]70%c[default]%  | SEVA Bodysuit, Tactical Stalker Suit, Mercenary LC Suit, Sentinel of Freedom |
+			\n | %c[d_blue]Mid+%c[default] | %c[red]0.200%c[default] x13 | %c[orange]37%c[default]% | %c[yellow]50%c[default]%  | Berill-5M Armored Suit, CS-3a Body Armor, Guardian of Freedom, "Sunrise" Exoskeleton |
+			\n | %c[d_blue]Hvy%c[default]  | %c[red]0.250%c[default] x10 | %c[orange]30%c[default]% | %c[yellow]40%c[default]%  | Interceptor Body Armor, Skat-9 Armored Suit |
+			\n | %c[d_grey]n/a%c[default]  | %c[red]0.300%c[default] x1  | %c[orange]30%c[default]% | %c[yellow]30%c[default]%  | Exosuit |
+			\n | %c[d_grey]n/a%c[default]  | %c[red]0.350%c[default] x2  | %c[orange]22%c[default]% | %c[yellow]25%c[default]%  | Skat-9 Armored Suit |
+			\n | %c[d_blue]Hvy+%c[default] | %c[red]0.400%c[default] x4  | %c[orange]20%c[default]% | %c[yellow]20%c[default]%  | PSZ-7p Shell Armor, Mercenary Exosuit, Monolith Exosuit |
+			\n | %c[d_grey]n/a%c[default]  | %c[red]0.430%c[default] x1  | %c[orange]15%c[default]% | %c[yellow]15%c[default]%  | Paragon of Freedom |
+			\n | %c[d_blue]Exo%c[default]  | %c[red]0.550%c[default] x5  | %c[orange]15%c[default]% | %c[yellow]10%c[default]%  | Exoskeleton, Mercenary Exoskeleton, Monolith Exoskeleton |
+			\n | %c[d_blue]Max%c[default]  | %c[red]0.650%c[default] x2  | %c[orange]15%c[default]% | %c[yellow]10%c[default]%  | Military Stalker Nosorog, PSZ-10d Exoskeleton |
+			\n
+			\n%c[d_green]Head armors%c[default] in base GAMMA
+			\n | %c[d_blue]Tier%c[default] | %c[red]armor%c[default] x model count | %c[orange]Min damage%c[default] | %c[yellow]% of all ammos that pen%c[default] | appearances (partial, to help visualize) |
+			---------------------------------------------------------------------------------------------------------------------------------------------------
+			\n | %c[d_blue]Min%c[default] | %c[red]0.000%c[default] x39 | %c[grey]100%c[default]   | %c[yellow]100%c[default]% | Overcoat, Leather Jacket, Tactical Stalker Suit, "Sunrise" Exoskeleton |
+			\n | %c[d_blue]Lgt%c[default] | %c[red]0.150%c[default] x7  | %c[orange]41%c[default]% | %c[yellow]70%c[default]%  | SEVA Bodysuit, SSP-99 Bodysuit, PS5-9Md Universal Scientific Suit |
+			\n | %c[d_blue]Mid%c[default] | %c[red]0.200%c[default] x13 | %c[orange]44%c[default]% | %c[yellow]60%c[default]%  | CS-3a Body Armor, Mercenary LC Suit, Berill-5M Armored Suit, "Sunrise" Stalker Suit |
+			\n | %c[d_blue]Hvy%c[default] | %c[red]0.300%c[default] x26 | %c[orange]33%c[default]% | %c[yellow]35%c[default]%  | Exosuit, Exoskeleton, PSZ-7p Shell Armor, Skat-9 Armored Suit |
+			\n | %c[d_blue]Max%c[default] | %c[red]0.350%c[default] x1  | %c[orange]15%c[default]% | %c[yellow]20%c[default]%  | Military Stalker Nosorog |
+			\n
+			\n%c[d_green]NPC health%c[default] is one shared pool (not split across limbs).
+			\n - Every stalker has the same max HP.
+			\n - There are no faction damage resists in live grok_bo.
+			\n
+			\n%c[d_green]mut_mult%c[default] Mutant multiplier (species_mult / weak_spot_mult):
+			\n - %c[d_blue]Pseudogiant%c[default]: 2.0 / 2.5
+			\n - %c[d_blue]Fracture%c[default]: 0.65 / 2.0
+			\n - %c[d_blue]Zombie%c[default]: 0.8 / 2.0
+			\n - %c[d_blue]Chimera%c[default]: 0.85 / 2.0
+			\n - %c[d_blue]Bloodsucker%c[default]: 0.85 / 1.4
+			\n - %c[d_blue]Psysucker%c[default]: 0.85 / 1.6
+			\n - %c[d_blue]Lurker%c[default]: 0.85 / 1.5
+			\n - %c[d_blue]Boar%c[default]: 0.9 / none
+			\n - %c[d_blue]Flesh%c[default]: 0.9 / 1.3
+			\n - %c[d_blue]Snork%c[default]: 0.95 / 2.0
+			\n - %c[d_blue]Other mutants%c[default]: 1.0 / none
+			\n
+			\n%c[d_green]mut_ammo_mult%c[default] Mutant ammo damage multiplier (0.85 for any ammo not listed):
+			\n - 2.5: 23x75 barrikada
+			\n - 2.3: .357 Magnum HP
+			\n - 1.4: 12x76 zhekan
+			\n - 1.25: .45 Hydro
+			\n - 1.2: .45 FMJ
+			\n - 1.1: 7.62x25 PS
+			\n - 1.0: 9x19 PBP, 9x18 PMM, 5.45 EP, 5.56 SS190
+			\n - 0.78: Buckshot 12x70 / 20x70, 23x75 shrapnel
+			\n
+			\n%c[d_green]Silencers%c[default]:
+			\n - Do not change combat damage or AP.
+			\n - Boomsticks mod still multiplies muzzle velocity x0.9 and cam recoil x0.82 when attached.
+		</text>
+	</string>
+
+	<!-- ===== Development ===== -->
+	<string id="ui_mcm_dorn_weapon_tooltip_development_section">
+		<text>Development</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_debug_log">
 		<text>Enable debug logging</text>

@@ -8,7 +8,7 @@
 	cell) and shows/hides rows. No icons - the type label carries the color.
 
 	    DAMAGE:              vs Torso                              vs Head
-	    Type  AP Min Lit Lit+ Med Med+ Hvy Hvy+ Exo Max  Min Lit Med Hvy Max
+	    Type  AP Min Lgt Lgt+ Mid Mid+ Hvy Hvy+ Exo Max  Min Lgt Mid Hvy Max
 	    AP    51  ..  ..   ..  ..   ..  ..   ..  ..  ..   ..  ..  ..  ..  ..
 	    FMJ   20  ..  ..   ..  ..   ..  ..   ..  ..  ..   ..  ..  ..  ..  ..
 
@@ -31,9 +31,10 @@
 
 	1. show_damage_table - per-ammo DAMAGE panel below the description (on by default).
 
-	2. column_headers - "names" (Min/Lit/...) or "raw" (0.011/0.075/...).
+	2. column_headers - "names" (Min/Lgt/...) or "raw" (0.011/0.075/...).
 
-	3. ammo_order - "damage" (dmg desc, AP asc) or "ap" (AP desc).
+	3. ammo_order - "damage" (dmg desc, AP asc), "ap" (AP desc), or
+	   "default" (same order as tooltip ammo icons / ammo_class).
 
 	4. calc_range - assumed distance in meters for damage math (0-200, default 20).
 
@@ -48,8 +49,11 @@
 	   show_muzzle_velocity - base Momopate/vanilla rows (each on by default).
 
 	8. show_base_spread / show_movement_spread / show_weapon_wear /
-	   show_burst_control / show_bullet_drop - new rows under the related base
-	   stat (each on by default).
+	   show_burst_control / show_bullet_drop - new companion rows (each on by
+	   default). Placement via stat_row_placement.
+
+	9. stat_row_placement - "inline" (under related base row) or "after"
+	   (after Accuracy…Recoil Control).
 ]]
 
 local MOD_ID = "dorn_weapon_tooltip"
@@ -72,12 +76,32 @@ local CONFIG = {
 	show_weapon_wear = true,
 	show_burst_control = true,
 	show_bullet_drop = true,
+	stat_row_placement = "inline",
 	column_headers = "names",
-	ammo_order = "damage",
+	ammo_order = "default",
 	calc_range_m = 20,
 	use_condition_table = false,
 	use_condition_stats = false,
 	debug_log = false,
+}
+
+-- Companion-row sort indices. Inline = just under the related Momopate/base
+-- row; after = block after Recoil Control (index 104).
+local EXTRA_STAT_INDEX = {
+	inline = {
+		base_spread = 1.5,
+		movement_spread = 2.5,
+		bullet_drop = 101.5,
+		weapon_wear = 103.5,
+		burst_control = 104.5,
+	},
+	after = {
+		base_spread = 105,
+		movement_spread = 106,
+		bullet_drop = 107,
+		weapon_wear = 108,
+		burst_control = 109,
+	},
 }
 
 -- Hit Power is weapon hit_power x 100 (per pellet, same as other guns), no ammo k_hit.
@@ -87,12 +111,19 @@ local BUCK_SELF = "ammo_12x70_buck_self"
 
 -- k_ap is the raw armor-piercing coefficient. The ammo's own info card scales it
 -- x1000 (k_ap 0.01 -> "10"), so we match that here.
--- Displayed AP = k_ap * AP_SCALE. Color scale tops out at the display AP needed
--- to penetrate the hardest NPC armor tier (see ap_pen_display_max).
+-- Displayed AP = k_ap * AP_SCALE. Color scale: grey at 0 → full yellow at the
+-- display AP needed to penetrate 0.650 torso bone armor (Max column) at calc_range.
 local AP_SCALE = 1000
-local AP_COLOR_LO = 1
+local AP_COLOR_ARMOR = 0.650
+local AP_COLOR_AP_SCALE = 0.7000 -- Max-tier outfit ap_scale average
 local AP_COLOR_REF_AIR = 0.05
 local REF_DIST_M = 20
+
+-- TEMP: force every Type cell to the globally longest ammo Type label so
+-- column width / Type→vs Torso spacing can be checked in-game. Remove after.
+local TEMP_FORCE_LONGEST_AMMO_LABEL = true
+-- Longest cleaned inv_name_short among GAMMA ammo (ammo_23x75_shrapnel).
+local TEMP_LONGEST_AMMO_LABEL = '"Shrapnel-25" 23x75mm'
 
 -- Named NPC bone-armor columns from visual profiles (see npc_visual_armor_reference.md).
 -- Only named floats are shown; rare 1-2 profile cliffs (0.125/0.300/0.350/0.430) are skipped.
@@ -101,10 +132,10 @@ local REF_DIST_M = 20
 -- label used when MCM column_headers = "names".
 local TORSO_TIERS = {
 	{ armor = 0.011, ap_scale = 0.8889, hit_frac = 0.8500, name = "Min" },
-	{ armor = 0.075, ap_scale = 0.8562, hit_frac = 0.6250, name = "Lit" },
-	{ armor = 0.100, ap_scale = 0.7955, hit_frac = 0.5000, name = "Lit+" },
-	{ armor = 0.150, ap_scale = 0.8117, hit_frac = 0.4783, name = "Med" },
-	{ armor = 0.200, ap_scale = 0.7412, hit_frac = 0.3618, name = "Med+" },
+	{ armor = 0.075, ap_scale = 0.8562, hit_frac = 0.6250, name = "Lgt" },
+	{ armor = 0.100, ap_scale = 0.7955, hit_frac = 0.5000, name = "Lgt+" },
+	{ armor = 0.150, ap_scale = 0.8117, hit_frac = 0.4783, name = "Mid" },
+	{ armor = 0.200, ap_scale = 0.7412, hit_frac = 0.3618, name = "Mid+" },
 	{ armor = 0.250, ap_scale = 0.7400, hit_frac = 0.3050, name = "Hvy" },
 	{ armor = 0.400, ap_scale = 0.7500, hit_frac = 0.2000, name = "Hvy+" },
 	{ armor = 0.550, ap_scale = 0.7000, hit_frac = 0.1500, name = "Exo" },
@@ -113,8 +144,8 @@ local TORSO_TIERS = {
 local HEAD_TIERS = {
 	-- Bare head: no bone armor, always full damage (hit_frac unused / forced pen).
 	{ armor = 0.000, ap_scale = 0.8096, hit_frac = 0,      name = "Min" },
-	{ armor = 0.150, ap_scale = 0.7571, hit_frac = 0.4071, name = "Lit" },
-	{ armor = 0.200, ap_scale = 0.7861, hit_frac = 0.4389, name = "Med" },
+	{ armor = 0.150, ap_scale = 0.7571, hit_frac = 0.4071, name = "Lgt" },
+	{ armor = 0.200, ap_scale = 0.7861, hit_frac = 0.4389, name = "Mid" },
 	{ armor = 0.300, ap_scale = 0.7621, hit_frac = 0.3431, name = "Hvy" },
 	{ armor = 0.350, ap_scale = 0.7000, hit_frac = 0.1500, name = "Max" },
 }
@@ -443,7 +474,9 @@ local function make_dorn_row(index, name, icon, prop)
 		compare = false,
 		sign = false,
 		show_always = true,
-		value_functor = { "dorn_weapon_tooltip_stats", prop },
+		-- Functors must live on this script module (zz_dorn_weapon_tooltip_main.*);
+		-- X-Ray resolves _G[file][func], not nested table fields on another script.
+		value_functor = { "zz_dorn_weapon_tooltip_main", prop },
 	}
 end
 
@@ -486,21 +519,21 @@ local function apply_enhanced_weapon_stats()
 		return
 	end
 
-	-- Indices sit just under the related base row (floats sort correctly).
+	local idx = EXTRA_STAT_INDEX[CONFIG.stat_row_placement] or EXTRA_STAT_INDEX.inline
 	weapon_stats["dorn_base_spread"] = CONFIG.show_base_spread
-		and make_dorn_row(1.5, N.base_spread, "ui_wp_prop_tochnost", "prop_base_spread")
+		and make_dorn_row(idx.base_spread, N.base_spread, "ui_wp_prop_tochnost", "prop_base_spread")
 		or nil
 	weapon_stats["dorn_movement_spread"] = CONFIG.show_movement_spread
-		and make_dorn_row(2.5, N.movement_spread, "ui_wp_prop_ergonomics", "prop_movement_spread")
-		or nil
-	weapon_stats["dorn_weapon_wear"] = CONFIG.show_weapon_wear
-		and make_dorn_row(103.5, N.weapon_wear, "ui_wp_propery_08", "prop_weapon_wear")
-		or nil
-	weapon_stats["dorn_burst_control"] = CONFIG.show_burst_control
-		and make_dorn_row(104.5, N.burst_control, "ui_wp_propery_03", "prop_burst_control")
+		and make_dorn_row(idx.movement_spread, N.movement_spread, "ui_wp_prop_ergonomics", "prop_movement_spread")
 		or nil
 	weapon_stats["dorn_bullet_drop"] = CONFIG.show_bullet_drop
-		and make_dorn_row(101.5, N.bullet_drop, "ui_wp_propery_06", "prop_bullet_drop")
+		and make_dorn_row(idx.bullet_drop, N.bullet_drop, "ui_wp_propery_06", "prop_bullet_drop")
+		or nil
+	weapon_stats["dorn_weapon_wear"] = CONFIG.show_weapon_wear
+		and make_dorn_row(idx.weapon_wear, N.weapon_wear, "ui_wp_propery_08", "prop_weapon_wear")
+		or nil
+	weapon_stats["dorn_burst_control"] = CONFIG.show_burst_control
+		and make_dorn_row(idx.burst_control, N.burst_control, "ui_wp_propery_03", "prop_burst_control")
 		or nil
 end
 
@@ -658,11 +691,19 @@ local function on_option_change()
 		else
 			CONFIG.column_headers = "names"
 		end
-		local order = DORN.mcm.string(MOD_ID, "main/ammo_order", "damage")
+		local order = DORN.mcm.string(MOD_ID, "main/ammo_order", "default")
 		if order == "ap" then
 			CONFIG.ammo_order = "ap"
-		else
+		elseif order == "damage" then
 			CONFIG.ammo_order = "damage"
+		else
+			CONFIG.ammo_order = "default"
+		end
+		local place = DORN.mcm.string(MOD_ID, "main/stat_row_placement", "inline")
+		if place == "after" then
+			CONFIG.stat_row_placement = "after"
+		else
+			CONFIG.stat_row_placement = "inline"
 		end
 		CONFIG.calc_range_m = clamp(DORN.mcm.number(MOD_ID, "main/calc_range", 20), 0, 200)
 		CONFIG.use_condition_table = DORN.mcm.bool(MOD_ID, "main/use_condition_table", false)
@@ -682,7 +723,7 @@ local function on_option_change()
 	end
 
 	log_once("config", string.format(
-		"config: table=%s hit=%s mutant=%s base=%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s headers=%s order=%s",
+		"config: table=%s hit=%s mutant=%s base=%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s place=%s headers=%s order=%s range=%s cond=%s/%s",
 		tostring(CONFIG.show_damage_table), tostring(CONFIG.show_hit_power),
 		tostring(CONFIG.show_mutant_damage),
 		tostring(CONFIG.show_accuracy), tostring(CONFIG.show_handling),
@@ -690,9 +731,10 @@ local function on_option_change()
 		tostring(CONFIG.show_muzzle_velocity),
 		tostring(CONFIG.show_base_spread), tostring(CONFIG.show_movement_spread),
 		tostring(CONFIG.show_weapon_wear), tostring(CONFIG.show_burst_control),
-		tostring(CONFIG.show_bullet_drop), tostring(CONFIG.column_headers),
-		tostring(CONFIG.ammo_order), tostring(CONFIG.calc_range_m),
-		tostring(CONFIG.use_condition_table), tostring(CONFIG.use_condition_stats)))
+		tostring(CONFIG.show_bullet_drop), tostring(CONFIG.stat_row_placement),
+		tostring(CONFIG.column_headers), tostring(CONFIG.ammo_order),
+		tostring(CONFIG.calc_range_m), tostring(CONFIG.use_condition_table),
+		tostring(CONFIG.use_condition_stats)))
 end
 
 local function first_number(str)
@@ -726,6 +768,42 @@ end
 
 function prop_stalker_ammo_damage_slash_flag(obj, sec)
 	if format_stalker_ammo_damage_slash(obj, sec) then
+		return 1
+	end
+end
+
+-- Sentinels for appended stat rows (real text applied in apply_custom_stat_display).
+function prop_base_spread(obj, sec)
+	local S = dorn_weapon_tooltip_stats
+	if S and S.text_base_spread and S.text_base_spread(obj, sec) then
+		return 1
+	end
+end
+
+function prop_movement_spread(obj, sec)
+	local S = dorn_weapon_tooltip_stats
+	if S and S.text_movement_spread and S.text_movement_spread(obj, sec) then
+		return 1
+	end
+end
+
+function prop_weapon_wear(obj, sec)
+	local S = dorn_weapon_tooltip_stats
+	if S and S.text_weapon_wear and S.text_weapon_wear(obj, sec) then
+		return 1
+	end
+end
+
+function prop_burst_control(obj, sec)
+	local S = dorn_weapon_tooltip_stats
+	if S and S.text_burst_control and S.text_burst_control(obj, sec) then
+		return 1
+	end
+end
+
+function prop_bullet_drop(obj, sec)
+	local S = dorn_weapon_tooltip_stats
+	if S and S.text_bullet_drop and S.text_bullet_drop(obj, sec) then
 		return 1
 	end
 end
@@ -805,38 +883,16 @@ local function difficulty_mult()
 	return 1.0
 end
 
--- Display AP (k_ap x 1000) at which combat_ap first penetrates the hardest
--- listed armor tier, using the same GBOOBS formula as effective_dmg at calc_range().
+-- Display AP (k_ap x 1000) needed for combat_ap to first penetrate 0.650 torso armor.
 local function ap_pen_display_max()
 	local dist_mult = dist_atten(AP_COLOR_REF_AIR, calc_range())
-	local hi = AP_COLOR_LO
-
-	for _, tier in ipairs(TORSO_TIERS) do
-		-- armor = k_ap * ap_scale / dist_mult  =>  k_ap = armor * dist_mult / ap_scale
-		local k_torso = tier.armor * dist_mult / tier.ap_scale
-		local display_torso = k_torso * AP_SCALE
-		if display_torso > hi then
-			hi = display_torso
-		end
-	end
-
-	for _, tier in ipairs(HEAD_TIERS) do
-		-- Same formula as torso: vs Head columns model bip01_head (no eye AP boost).
-		local k_head = tier.armor * dist_mult / tier.ap_scale
-		if k_head > 0 then
-			local display_head = k_head * AP_SCALE
-			if display_head > hi then
-				hi = display_head
-			end
-		end
-	end
-
-	return math.max(math.ceil(hi), AP_COLOR_LO + 1)
+	local k_ap = AP_COLOR_ARMOR * dist_mult / AP_COLOR_AP_SCALE
+	return math.max(math.ceil(k_ap * AP_SCALE), 1)
 end
 
 local function ap_display_color(ap)
 	local hi = ap_pen_display_max()
-	local t = clamp((ap - AP_COLOR_LO) / (hi - AP_COLOR_LO), 0, 1)
+	local t = clamp((tonumber(ap) or 0) / hi, 0, 1)
 	return GetARGB(255,
 		math.floor(lerp(175, 255, t)),
 		math.floor(lerp(175, 255, t)),
@@ -913,6 +969,7 @@ end
 
 -- Unique ammo rounds for a weapon (same order as the damage table).
 -- ammo_order "damage": dmg desc, then AP asc. "ap": AP desc, then label.
+-- "default": leave utils_item.get_ammo order (matches tooltip ammo icons).
 local function collect_sorted_ammo_rounds(obj, sec, max_count)
 	local ammo_class = SYS_GetParam(0, sec, "ammo_class", "")
 	if not ammo_class or ammo_class == "" then
@@ -963,21 +1020,23 @@ local function collect_sorted_ammo_rounds(obj, sec, max_count)
 		return nil
 	end
 
-	table.sort(rounds, function(a, b)
-		if CONFIG.ammo_order == "ap" then
+	if CONFIG.ammo_order ~= "default" then
+		table.sort(rounds, function(a, b)
+			if CONFIG.ammo_order == "ap" then
+				if a.ap ~= b.ap then
+					return a.ap > b.ap
+				end
+				return a.label < b.label
+			end
+			if a.dmg ~= b.dmg then
+				return a.dmg > b.dmg
+			end
 			if a.ap ~= b.ap then
-				return a.ap > b.ap
+				return a.ap < b.ap
 			end
 			return a.label < b.label
-		end
-		if a.dmg ~= b.dmg then
-			return a.dmg > b.dmg
-		end
-		if a.ap ~= b.ap then
-			return a.ap < b.ap
-		end
-		return a.label < b.label
-	end)
+		end)
+	end
 
 	if max_count and #rounds > max_count then
 		local capped = {}
@@ -1031,9 +1090,19 @@ local function build_ammo_damage_rows(obj, sec)
 	local head_hi = section_dmg_max(rows, "head")
 	local ordered = {}
 
+	local force_label = TEMP_FORCE_LONGEST_AMMO_LABEL and TEMP_LONGEST_AMMO_LABEL or nil
+	if force_label and not logged_once["temp_longest_ammo_label"] then
+		logged_once["temp_longest_ammo_label"] = true
+		printf(
+			"[DORN][%s] TEMP Type label forced to: %s",
+			MOD_ID,
+			force_label
+		)
+	end
+
 	for _, row in ipairs(rows) do
 		ordered[#ordered + 1] = {
-			type = row.label,
+			type = force_label or row.label,
 			ap = tostring(row.ap),
 			ap_val = row.ap,
 			torso = row.torso,

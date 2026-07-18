@@ -18,6 +18,50 @@ function on_mcm_load()
 				text = "ui_mcm_dorn_weapon_tooltip_main_section",
 				gr = MCM.with_header({
 					{
+						id = "hdr_general",
+						type = "title",
+						text = "ui_mcm_dorn_weapon_tooltip_hdr_general",
+					},
+					{
+						id = "ammo_order",
+						type = "list",
+						val = 0,
+						def = "default",
+						hint = "dorn_weapon_tooltip_ammo_order",
+						content = {
+							{ "default", "default" },
+							{ "damage", "damage" },
+							{ "ap", "ap" },
+						},
+					},
+					{
+						id = "calc_range",
+						type = "track",
+						val = 2,
+						min = 0,
+						max = 200,
+						step = 1,
+						def = 20,
+						hint = "dorn_weapon_tooltip_calc_range",
+					},
+					{
+						id = "stat_row_placement",
+						type = "list",
+						val = 0,
+						def = "inline",
+						hint = "dorn_weapon_tooltip_stat_row_placement",
+						content = {
+							{ "inline", "inline" },
+							{ "after", "after" },
+						},
+					},
+					{ id = "line_general", type = "line" },
+					{
+						id = "hdr_damage_table",
+						type = "title",
+						text = "ui_mcm_dorn_weapon_tooltip_hdr_damage_table",
+					},
+					{
 						id = "show_damage_table",
 						type = "check",
 						val = 1,
@@ -36,32 +80,17 @@ function on_mcm_load()
 						},
 					},
 					{
-						id = "ammo_order",
-						type = "list",
-						val = 0,
-						def = "damage",
-						hint = "dorn_weapon_tooltip_ammo_order",
-						content = {
-							{ "damage", "damage" },
-							{ "ap", "ap" },
-						},
-					},
-					{
-						id = "calc_range",
-						type = "track",
-						val = 2,
-						min = 0,
-						max = 200,
-						step = 1,
-						def = 20,
-						hint = "dorn_weapon_tooltip_calc_range",
-					},
-					{
 						id = "use_condition_table",
 						type = "check",
 						val = 1,
 						def = false,
 						hint = "dorn_weapon_tooltip_use_condition_table",
+					},
+					{ id = "line_damage_table", type = "line" },
+					{
+						id = "hdr_stat_list",
+						type = "title",
+						text = "ui_mcm_dorn_weapon_tooltip_hdr_stat_list",
 					},
 					{
 						id = "use_condition_stats",
@@ -180,17 +209,6 @@ function on_mcm_load()
 					},
 					{ id = "line_notes", type = "line" },
 					{
-						id = "hdr_damage_table",
-						type = "title",
-						text = "ui_mcm_dorn_weapon_tooltip_hdr_damage_table",
-					},
-					{
-						id = "damage_table_info",
-						type = "desc",
-						text = "ui_mcm_dorn_weapon_tooltip_info_damage_table",
-					},
-					{ id = "line_damage_table", type = "line" },
-					{
 						id = "hdr_enhanced_stats",
 						type = "title",
 						text = "ui_mcm_dorn_weapon_tooltip_hdr_enhanced_stats",
@@ -201,6 +219,17 @@ function on_mcm_load()
 						text = "ui_mcm_dorn_weapon_tooltip_info_enhanced_stats",
 					},
 					{ id = "line_enhanced_stats", type = "line" },
+					{
+						id = "hdr_damage_table",
+						type = "title",
+						text = "ui_mcm_dorn_weapon_tooltip_hdr_damage_table",
+					},
+					{
+						id = "damage_table_info",
+						type = "desc",
+						text = "ui_mcm_dorn_weapon_tooltip_info_damage_table",
+					},
+					{ id = "line_damage_table", type = "line" },
 					{
 						id = "hdr_damage_notes",
 						type = "title",
