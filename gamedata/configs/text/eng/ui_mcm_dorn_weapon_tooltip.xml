@@ -3,7 +3,7 @@
 <string_table>
 	<!-- Menu title -->
 	<string id="ui_mcm_menu_dorn_weapon_tooltip">
-		<text>Dorn's Weapon Tooltip</text>
+		<text>Dorn's Weapon Tooltips</text>
 	</string>
 
 	<!-- ===== Main ===== -->
@@ -44,7 +44,7 @@
 		<text>Range for Dispersion/Drop (meters)</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_drop_range_desc">
-		<text>Dispersion = lateral miss from Base Spread. Bullet Drop = vertical fall.</text>
+		<text>Dispersion = lateral miss from standing Spread (min). Bullet Drop = vertical fall.</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_burst_threshold">
 		<text>Burst Size climb target (degrees)</text>
@@ -66,6 +66,24 @@
 	</string>
 	<string id="dorn_weapon_tooltip_main_stat_row_placement_lst_after">
 		<text>End of list</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_compare_color">
+		<text>Compare color on</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_compare_color_desc">
+		<text>When comparing to the equipped weapon: put green/red on the left (main stat) or right (+/- difference). Applies to Dorn and vanilla rows without recalculating numbers. Slash damage rows keep their ammo colors either way.</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_compare_color_lst_left">
+		<text>Left (main stat)</text>
+	</string>
+	<string id="dorn_weapon_tooltip_main_compare_color_lst_right">
+		<text>Right (+/-)</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_compact_header">
+		<text>Compact Header</text>
+	</string>
+	<string id="ui_mcm_dorn_weapon_tooltip_compact_header_desc">
+		<text>Put weight just under the item name (left) and pull the description / STATUS block up to reclaim the empty padding. Applies to all item tooltips.</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_hdr_damage_table">
 		<text>Damage Table</text>
@@ -128,13 +146,7 @@
 		<text>Show Dispersion Stat</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_show_dispersion_desc">
-		<text>Lateral miss at the Dispersion/Drop range (range x tan Base Spread).</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_base_spread">
-		<text>Show Base Spread Stat</text>
-	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_base_spread_desc">
-		<text>Max angle off target when standing still. E.g. 0.35 = up to 0.35 deg off center.</text>
+		<text>Lateral miss at the Dispersion/Drop range (range x tan standing Spread min).</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_show_handling">
 		<text>%c[dark_gray]Show Handling Stat%c[default]</text>
@@ -142,11 +154,11 @@
 	<string id="ui_mcm_dorn_weapon_tooltip_show_handling_desc">
 		<text>Vanilla GAMMA row.</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_movement_spread">
-		<text>Show Move Spread Stat</text>
+	<string id="ui_mcm_dorn_weapon_tooltip_show_spread">
+		<text>Show Spread Stat</text>
 	</string>
-	<string id="ui_mcm_dorn_weapon_tooltip_show_movement_spread_desc">
-		<text>Final angle off target while hip-firing and running (Base Spread + movement). Aiming mostly cancels the movement add-on.</text>
+	<string id="ui_mcm_dorn_weapon_tooltip_show_spread_desc">
+		<text>Min - max cone degrees: standing-ADS - hip-run. Aiming mostly cancels the movement add-on.</text>
 	</string>
 	<string id="ui_mcm_dorn_weapon_tooltip_show_hit_power">
 		<text>Show Hit Power Stat</text>
@@ -219,11 +231,8 @@
 	<string id="ui_dorn_wpn_dispersion">
 		<text>Dispersion</text>
 	</string>
-	<string id="ui_dorn_wpn_base_spread">
-		<text>Base Spread</text>
-	</string>
-	<string id="ui_dorn_wpn_movement_spread">
-		<text>Move Spread</text>
+	<string id="ui_dorn_wpn_spread">
+		<text>Spread</text>
 	</string>
 	<string id="ui_dorn_wpn_hit_power">
 		<text>Hit Power</text>
@@ -267,18 +276,13 @@
 		<text>
 			New optional stat list items:
 			\n
+			\n%c[d_green]Spread%c[default]
+			\n - Min - max cone in degrees: standing-ADS (weapon fire_dispersion_base) - hip-fire while running (min + movement penalty).
+			\n - E.g. "0.35 - 1.20" means up to 0.35° off center when still, up to 1.20° while hip-running.
+			\n - Uses normal run speed, not sprint. Aiming mostly cancels the movement add-on (back to the min).
+			\n
 			\n%c[d_green]Dispersion%c[default]
-			\n - Base Spread angle translated into distance off target at the MCM Dispersion/Drop range (default 200m): range x tan(Base Spread).
-			\n
-			\n%c[d_green]Base Spread%c[default]
-			\n - Max angle off target when standing still (weapon fire_dispersion_base), in degrees.
-			\n - E.g. "0.35" means the bullet can be up to 0.35 degrees off center in any direction.
-			\n - While aiming, the movement add-on is near zero, so this is also what you get ADS.
-			\n
-			\n%c[d_green]Move Spread%c[default]
-			\n - Final total angle off target while hip-firing and running: Base Spread plus the movement penalty.
-			\n - One number for the actual cone you shoot with when moving (not just the movement add-on alone).
-			\n - Uses normal run speed, not sprint. Aiming mostly cancels the movement add-on (back to Base Spread).
+			\n - Standing Spread (min) angle translated into distance off target at the MCM Dispersion/Drop range (default 200m): range x tan(Spread min).
 			\n
 			\n%c[d_green]Hit Power%c[default]
 			\n - New stat that shows what % of base ammo damage this weapon inflicts.

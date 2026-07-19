@@ -1,4 +1,4 @@
-# Ammo Type label reference (Dorn's Weapon Tooltip)
+# Ammo Type label reference (Dorn's Weapon Tooltips)
 
 Complete list of every ammo section in this doc (sorted by section).
 Full display name = translated `inv_name`. Source for clean = translated `inv_name_short` (else `inv_name`).

@@ -1,5 +1,5 @@
 --[[
-	Dorn's Weapon Tooltip - per-ammo damage table + enhanced weapon stats.
+	Dorn's Weapon Tooltips - per-ammo damage table + enhanced weapon stats.
 
 	Layout/static text: ui_dorn_weapon_tooltip.xml. This script fills cells and
 	wires MCM / utils_ui.stats_table.
@@ -25,9 +25,8 @@ local CONFIG = {
 	show_reliability = true,
 	show_recoil = true,
 	show_muzzle_velocity = true,
-	show_base_spread = true,
 	show_dispersion = true,
-	show_movement_spread = true,
+	show_spread = true,
 	show_barrel_wear = true,
 	show_burst_control = true,
 	show_bullet_drop = true,
@@ -40,6 +39,9 @@ local CONFIG = {
 	use_condition_stats = false,
 	apply_silencer_table = false,
 	apply_silencer_stats = false,
+	-- "right" = green/red on (+/-X); "left" = stock style (color the main number).
+	compare_color = "right",
+	compact_header = true,
 	debug_log = false,
 	debug_overlay = false,
 }
@@ -60,8 +62,7 @@ local BASE_INDEX = {
 -- Fallback string ids if dorn_weapon_tooltip_stats failed to expose NAME.
 local EXTRA_STAT_NAME = {
 	dispersion = "ui_dorn_wpn_dispersion",
-	base_spread = "ui_dorn_wpn_base_spread",
-	movement_spread = "ui_dorn_wpn_movement_spread",
+	spread = "ui_dorn_wpn_spread",
 	barrel_wear = "ui_dorn_wpn_barrel_wear",
 	burst_control = "ui_dorn_wpn_burst_control",
 	bullet_drop = "ui_dorn_wpn_bullet_drop",
@@ -392,9 +393,8 @@ local function refresh_enhanced_stat_labels()
 		hit_power = game.translate_string("ui_dorn_wpn_hit_power"),
 		stalker_damage = game.translate_string("ui_dorn_wpn_stalker_damage"),
 		ammo_damage = game.translate_string("ui_dorn_wpn_ammo_torso"),
-		base_spread = game.translate_string("ui_dorn_wpn_base_spread"),
 		dispersion = game.translate_string("ui_dorn_wpn_dispersion"),
-		movement_spread = game.translate_string("ui_dorn_wpn_movement_spread"),
+		spread = game.translate_string("ui_dorn_wpn_spread"),
 		barrel_wear = game.translate_string("ui_dorn_wpn_barrel_wear"),
 		burst_control = game.translate_string("ui_dorn_wpn_burst_control"),
 		bullet_drop = game.translate_string("ui_dorn_wpn_bullet_drop"),
@@ -419,11 +419,8 @@ local function custom_stat_text(cap, obj, sec)
 	if CONFIG.show_dispersion and cap == ENHANCED_STAT_LABELS.dispersion then
 		return S.text_for_name(N.dispersion, obj, sec)
 	end
-	if CONFIG.show_base_spread and cap == ENHANCED_STAT_LABELS.base_spread then
-		return S.text_for_name(N.base_spread, obj, sec)
-	end
-	if CONFIG.show_movement_spread and cap == ENHANCED_STAT_LABELS.movement_spread then
-		return S.text_for_name(N.movement_spread, obj, sec)
+	if CONFIG.show_spread and cap == ENHANCED_STAT_LABELS.spread then
+		return S.text_for_name(N.spread, obj, sec)
 	end
 	if CONFIG.show_barrel_wear and cap == ENHANCED_STAT_LABELS.barrel_wear then
 		return S.text_for_name(N.barrel_wear, obj, sec)
@@ -447,11 +444,8 @@ local function companion_name_id_for_cap(cap)
 	if cap == L.dispersion then
 		return N.dispersion
 	end
-	if cap == L.base_spread then
-		return N.base_spread
-	end
-	if cap == L.movement_spread then
-		return N.movement_spread
+	if cap == L.spread then
+		return N.spread
 	end
 	if cap == L.barrel_wear then
 		return N.barrel_wear
@@ -499,9 +493,34 @@ local function round_compare(v, decimals)
 	return math.floor(v * mult + 0.5) / mult
 end
 
--- Stock text compare: green/red value + "(+/-diff)" in the compare column.
+local function format_signed_diff(diff, decimals)
+	local diff_txt = string.format("%." .. tostring(decimals or 2) .. "f", diff)
+	diff_txt = diff_txt:gsub("(%..-)0+$", "%1"):gsub("%.$", "")
+	if diff > 0 then
+		return "+" .. diff_txt
+	end
+	return diff_txt
+end
+
+local function paint_compare_colors(ele, better, color_value)
+	local clr = better and CLR.cmp_pos or CLR.cmp_neg
+	local color_right = CONFIG.compare_color ~= "left"
+	if color_right then
+		ele.comp:SetTextColor(clr)
+		if color_value ~= false and ele.txt then
+			ele.txt:SetTextColor(CLR.white)
+		end
+	else
+		ele.comp:SetTextColor(CLR.white)
+		if color_value ~= false and ele.txt then
+			ele.txt:SetTextColor(clr)
+		end
+	end
+end
+
+-- Stock text compare: green/red on value or on "(+/-diff)", per MCM.
 -- Returns true when a compare delta was shown.
--- color_value=false: only tint the compare column (slash rows keep ammo colors).
+-- color_value=false: never paint the main text (slash rows keep ammo colors).
 local function apply_numeric_compare(ele, val_a, val_b, lower_is_better, decimals, color_value)
 	if not ele or not ele.comp or val_a == nil or val_b == nil then
 		return false
@@ -513,10 +532,7 @@ local function apply_numeric_compare(ele, val_a, val_b, lower_is_better, decimal
 		return false
 	end
 	local diff = a - b
-	local diff_txt = string.format("%." .. tostring(decimals or 2) .. "f", diff)
-	-- Trim trailing zeros after the decimal (keep at least one digit if fractional).
-	diff_txt = diff_txt:gsub("(%..-)0+$", "%1"):gsub("%.$", "")
-	ele.comp:SetText("(" .. (diff > 0 and "+" or "") .. diff_txt .. ")")
+	ele.comp:SetText("(" .. format_signed_diff(diff, decimals) .. ")")
 	ele.comp:Show(true)
 	local better
 	if lower_is_better then
@@ -524,11 +540,7 @@ local function apply_numeric_compare(ele, val_a, val_b, lower_is_better, decimal
 	else
 		better = a > b
 	end
-	local clr = better and CLR.cmp_pos or CLR.cmp_neg
-	ele.comp:SetTextColor(clr)
-	if color_value ~= false and ele.txt then
-		ele.txt:SetTextColor(clr)
-	end
+	paint_compare_colors(ele, better, color_value)
 	return true
 end
 
@@ -545,17 +557,70 @@ local function resolve_compare_sec(obj_b)
 	return nil
 end
 
+-- Spread: show both min and max deltas "(+x, -y)"; color from average (lower better).
+local function apply_spread_compare(ele, obj, sec, obj_b, decimals)
+	local S = dorn_weapon_tooltip_stats
+	if not ele or not ele.comp or not S or not obj_b then
+		return false
+	end
+	if not S.value_base_spread or not S.value_movement_spread then
+		return false
+	end
+	local sec_b = resolve_compare_sec(obj_b)
+	local lo_a = S.value_base_spread(obj, sec)
+	local hi_a = S.value_movement_spread(obj, sec)
+	local lo_b = S.value_base_spread(obj_b, sec_b)
+	local hi_b = S.value_movement_spread(obj_b, sec_b)
+	if not lo_a or not hi_a or not lo_b or not hi_b then
+		return false
+	end
+	local d_lo = round_compare(lo_a, decimals) - round_compare(lo_b, decimals)
+	local d_hi = round_compare(hi_a, decimals) - round_compare(hi_b, decimals)
+	if d_lo == 0 and d_hi == 0 then
+		ele.comp:Show(false)
+		return false
+	end
+	ele.comp:SetText("(" .. format_signed_diff(d_lo, decimals)
+		.. ", " .. format_signed_diff(d_hi, decimals) .. ")")
+	ele.comp:Show(true)
+	local avg_a = (lo_a + hi_a) * 0.5
+	local avg_b = (lo_b + hi_b) * 0.5
+	paint_compare_colors(ele, avg_a < avg_b, true)
+	return true
+end
+
+-- Move stock-painted compare colors to the MCM side without recalculating values.
+-- Text rows: stock puts green/red on the main number. Bar rows: already on (+/-).
+local function relocate_stock_compare_colors(ele)
+	if not ele or not ele.comp or not ele.comp:IsShown() then
+		return
+	end
+	local txt_shown = ele.txt and ele.txt:IsShown()
+	if CONFIG.compare_color == "right" then
+		if txt_shown then
+			ele.comp:SetTextColor(ele.txt:GetTextColor())
+			ele.txt:SetTextColor(CLR.white)
+		end
+	else
+		-- Left side: keep / restore color on the number; +/- stays white.
+		ele.comp:SetTextColor(CLR.white)
+	end
+end
+
 local function apply_companion_compare(ele, name_id, obj, sec, obj_b)
 	local S = dorn_weapon_tooltip_stats
 	if not S or not S.value_for_name or not obj_b then
 		return false
 	end
-	local val_a = S.value_for_name(name_id, obj, sec)
-	local val_b = S.value_for_name(name_id, obj_b, resolve_compare_sec(obj_b))
 	local lower_better, decimals = false, 2
 	if S.compare_meta_for_name then
 		lower_better, decimals = S.compare_meta_for_name(name_id)
 	end
+	if S.NAME and name_id == S.NAME.spread then
+		return apply_spread_compare(ele, obj, sec, obj_b, decimals)
+	end
+	local val_a = S.value_for_name(name_id, obj, sec)
+	local val_b = S.value_for_name(name_id, obj_b, resolve_compare_sec(obj_b))
 	return apply_numeric_compare(ele, val_a, val_b, lower_better, decimals)
 end
 
@@ -592,6 +657,7 @@ local function apply_custom_stat_display(info, obj, sec)
 	end
 
 	local obj_b = slot_compare_weapon(info, obj, sec)
+	local painted = {}
 
 	for _, ele in pairs(info.stats) do
 		if ele.cap and ele.txt then
@@ -611,6 +677,7 @@ local function apply_custom_stat_display(info, obj, sec)
 							or cap == ENHANCED_STAT_LABELS.ammo_damage
 							or cap == ENHANCED_STAT_LABELS.bullet_drop
 							or cap == ENHANCED_STAT_LABELS.dispersion
+							or cap == ENHANCED_STAT_LABELS.spread
 							or cap == ENHANCED_STAT_LABELS.burst_control
 							or cap == ENHANCED_STAT_LABELS.barrel_wear then
 							ele.txt:SetTextComplexMode(true)
@@ -634,12 +701,21 @@ local function apply_custom_stat_display(info, obj, sec)
 								end
 							end
 						end
-						if not comparing and ele.comp then
+						if comparing then
+							painted[ele] = true
+						elseif ele.comp then
 							ele.comp:Show(false)
 						end
 					end
 				end
 			end
+		end
+	end
+
+	-- Vanilla / Hit Power: restyle existing compare colors (no recalc).
+	for _, ele in pairs(info.stats) do
+		if ele.comp and ele.comp:IsShown() and not painted[ele] then
+			relocate_stock_compare_colors(ele)
 		end
 	end
 end
@@ -799,7 +875,7 @@ local function inline_companion_index(parent_key, parent_shown)
 	return parent_idx
 end
 
--- Two companions under one parent (upper first). Dispersion sits above Base Spread.
+-- Two companions under one parent (upper first). Spread sits above Dispersion.
 local function inline_companion_pair(parent_key, parent_shown, upper_shown, lower_shown)
 	local parent_idx = resolved_base_index(parent_key)
 	if parent_shown then
@@ -823,12 +899,11 @@ local function placement_indices(weapon_stats)
 			hit_power = base + 1,
 			stalker_damage = base + 2,
 			mutant_damage = base + 3,
-			dispersion = base + 4,
-			base_spread = base + 5,
-			movement_spread = base + 6,
-			bullet_drop = base + 7,
-			barrel_wear = base + 8,
-			burst_control = base + 9,
+			spread = base + 4,
+			dispersion = base + 5,
+			bullet_drop = base + 6,
+			barrel_wear = base + 7,
+			burst_control = base + 8,
 		}
 	end
 
@@ -845,25 +920,23 @@ local function placement_indices(weapon_stats)
 			hit_power = dmg.hit_power,
 			stalker_damage = dmg.stalker_damage,
 			mutant_damage = dmg.mutant_damage,
-			dispersion = 0.4,
-			base_spread = 0.5,
-			movement_spread = 0.6,
-			bullet_drop = 0.7,
-			barrel_wear = 0.8,
-			burst_control = 0.9,
+			spread = 0.4,
+			dispersion = 0.5,
+			bullet_drop = 0.6,
+			barrel_wear = 0.7,
+			burst_control = 0.8,
 		}
 	end
 
 	-- Inline: companions after related base; damage trio still first.
-	local disp_idx, spread_idx = inline_companion_pair(
-		"accuracy", CONFIG.show_accuracy, CONFIG.show_dispersion, CONFIG.show_base_spread)
+	local spread_idx, disp_idx = inline_companion_pair(
+		"accuracy", CONFIG.show_accuracy, CONFIG.show_spread, CONFIG.show_dispersion)
 	return {
 		hit_power = dmg.hit_power,
 		stalker_damage = dmg.stalker_damage,
 		mutant_damage = dmg.mutant_damage,
+		spread = spread_idx,
 		dispersion = disp_idx,
-		base_spread = spread_idx,
-		movement_spread = inline_companion_index("handling", CONFIG.show_handling),
 		bullet_drop = inline_companion_index("speed", CONFIG.show_muzzle_velocity),
 		barrel_wear = inline_companion_index("reliability", CONFIG.show_reliability),
 		burst_control = inline_companion_index("recoil", CONFIG.show_recoil),
@@ -921,12 +994,12 @@ local function apply_enhanced_weapon_stats()
 	weapon_stats["dorn_dispersion"] = CONFIG.show_dispersion
 		and make_dorn_row(idx.dispersion, N.dispersion, "ui_wp_prop_contrast", "prop_dispersion")
 		or nil
-	weapon_stats["dorn_base_spread"] = CONFIG.show_base_spread
-		and make_dorn_row(idx.base_spread, N.base_spread, "ui_wp_prop_optics", "prop_base_spread")
+	weapon_stats["dorn_spread"] = CONFIG.show_spread
+		and make_dorn_row(idx.spread, N.spread, "ui_wp_propery_13", "prop_spread")
 		or nil
-	weapon_stats["dorn_movement_spread"] = CONFIG.show_movement_spread
-		and make_dorn_row(idx.movement_spread, N.movement_spread, "ui_wp_propery_13", "prop_movement_spread")
-		or nil
+	-- Drop legacy dual-spread rows if a previous session registered them.
+	weapon_stats["dorn_base_spread"] = nil
+	weapon_stats["dorn_movement_spread"] = nil
 	weapon_stats["dorn_bullet_drop"] = CONFIG.show_bullet_drop
 		and make_dorn_row(idx.bullet_drop, N.bullet_drop, "ui_wp_prop_nastilnost", "prop_bullet_drop")
 		or nil
@@ -993,8 +1066,6 @@ local function read_extra_stat_default()
 end
 
 local EXTRA_STAT_LEGACY = {
-	show_base_spread = "show_append_accuracy",
-	show_movement_spread = "show_append_handling",
 	show_barrel_wear = "show_append_reliability",
 	show_burst_control = "show_append_recoil",
 	show_bullet_drop = "show_append_muzzle_velocity",
@@ -1010,6 +1081,31 @@ local function read_extra_stat_flag(key)
 	local legacy = EXTRA_STAT_LEGACY[key]
 	if legacy and DORN.mcm.get(MOD_ID, "main/" .. legacy) ~= nil then
 		return DORN.mcm.bool(MOD_ID, "main/" .. legacy, true)
+	end
+	return read_extra_stat_default()
+end
+
+-- Combined Spread: new key, else OR of old Base/Move (and their append-legacy keys).
+local function read_spread_flag()
+	if not DORN or not DORN.mcm then
+		return true
+	end
+	if DORN.mcm.get(MOD_ID, "main/show_spread") ~= nil then
+		return DORN.mcm.bool(MOD_ID, "main/show_spread", true)
+	end
+	local has_base = DORN.mcm.get(MOD_ID, "main/show_base_spread") ~= nil
+	local has_move = DORN.mcm.get(MOD_ID, "main/show_movement_spread") ~= nil
+	if has_base or has_move then
+		local base_on = has_base and DORN.mcm.bool(MOD_ID, "main/show_base_spread", true)
+		local move_on = has_move and DORN.mcm.bool(MOD_ID, "main/show_movement_spread", true)
+		return base_on or move_on
+	end
+	local has_acc = DORN.mcm.get(MOD_ID, "main/show_append_accuracy") ~= nil
+	local has_hand = DORN.mcm.get(MOD_ID, "main/show_append_handling") ~= nil
+	if has_acc or has_hand then
+		local acc_on = has_acc and DORN.mcm.bool(MOD_ID, "main/show_append_accuracy", true)
+		local hand_on = has_hand and DORN.mcm.bool(MOD_ID, "main/show_append_handling", true)
+		return acc_on or hand_on
 	end
 	return read_extra_stat_default()
 end
@@ -1104,9 +1200,8 @@ local function on_option_change()
 		CONFIG.show_reliability = read_base_stat_flag("show_reliability")
 		CONFIG.show_recoil = read_base_stat_flag("show_recoil")
 		CONFIG.show_muzzle_velocity = read_base_stat_flag("show_muzzle_velocity")
-		CONFIG.show_base_spread = read_extra_stat_flag("show_base_spread")
 		CONFIG.show_dispersion = read_extra_stat_flag("show_dispersion")
-		CONFIG.show_movement_spread = read_extra_stat_flag("show_movement_spread")
+		CONFIG.show_spread = read_spread_flag()
 		CONFIG.show_barrel_wear = read_extra_stat_flag("show_barrel_wear")
 		CONFIG.show_burst_control = read_extra_stat_flag("show_burst_control")
 		CONFIG.show_bullet_drop = read_extra_stat_flag("show_bullet_drop")
@@ -1136,6 +1231,14 @@ local function on_option_change()
 		else
 			CONFIG.stat_row_placement = "inline"
 		end
+		local cmp_clr = DORN.mcm.string(MOD_ID, "main/compare_color", "right")
+		-- Legacy: "value"/"diff" from the first compare-color labels.
+		if cmp_clr == "left" or cmp_clr == "value" then
+			CONFIG.compare_color = "left"
+		else
+			CONFIG.compare_color = "right"
+		end
+		CONFIG.compact_header = DORN.mcm.bool(MOD_ID, "main/compact_header", true)
 		CONFIG.calc_range_m = clamp(DORN.mcm.number(MOD_ID, "main/calc_range", 30), 0, 200)
 		CONFIG.pellet_hit_pct = clamp(DORN.mcm.number(MOD_ID, "main/pellet_hit_pct", 100), 1, 100)
 		local drop_range = clamp(DORN.mcm.number(MOD_ID, "main/drop_range", 200), 100, 2000)
@@ -1195,15 +1298,14 @@ local function on_option_change()
 	end
 
 	log_once("config", string.format(
-		"config: table=%s hit=%s stalker=%s mutant=%s base=%s/%s/%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s/%s place=%s headers=%s order=%s range=%s pellet%%=%s cond=%s/%s sil=%s/%s",
+		"config: table=%s hit=%s stalker=%s mutant=%s base=%s/%s/%s/%s/%s/%s/%s extra=%s/%s/%s/%s/%s place=%s headers=%s order=%s range=%s pellet%%=%s cond=%s/%s sil=%s/%s",
 		tostr(CONFIG.show_damage_table), tostr(CONFIG.show_hit_power),
 		tostr(CONFIG.show_stalker_damage), tostr(CONFIG.show_mutant_damage),
 		tostr(CONFIG.show_accuracy), tostr(CONFIG.show_handling),
 		tostr(CONFIG.show_fire_rate), tostr(CONFIG.show_mag_size),
 		tostr(CONFIG.show_muzzle_velocity),
 		tostr(CONFIG.show_reliability), tostr(CONFIG.show_recoil),
-		tostr(CONFIG.show_dispersion), tostr(CONFIG.show_base_spread),
-		tostr(CONFIG.show_movement_spread),
+		tostr(CONFIG.show_dispersion), tostr(CONFIG.show_spread),
 		tostr(CONFIG.show_barrel_wear),
 		tostr(CONFIG.show_burst_control),
 		tostr(CONFIG.show_bullet_drop), tostr(CONFIG.stat_row_placement),
@@ -1325,16 +1427,9 @@ function prop_dispersion(obj, sec)
 	end
 end
 
-function prop_base_spread(obj, sec)
+function prop_spread(obj, sec)
 	local S = dorn_weapon_tooltip_stats
-	if S and S.text_base_spread and S.text_base_spread(obj, sec) then
-		return 1
-	end
-end
-
-function prop_movement_spread(obj, sec)
-	local S = dorn_weapon_tooltip_stats
-	if S and S.text_movement_spread and S.text_movement_spread(obj, sec) then
+	if S and S.text_spread and S.text_spread(obj, sec) then
 		return 1
 	end
 end
@@ -2173,6 +2268,58 @@ local function sync_damage_layout(info)
 	info:Sync_H(tail, info.frame, SECTION_GAP)
 end
 
+-- Cache stock header Ys once (Sota utils.xml: name 16, weight/cost 34, note 52, desc 70).
+local function cache_header_ys(info)
+	if info.dorn_hdr_ys or not info.name or not info.weight or not info.desc then
+		return
+	end
+	info.dorn_hdr_ys = {
+		name = info.name:GetWndPos().y,
+		weight = info.weight:GetWndPos().y,
+		value = info.value and info.value:GetWndPos().y or info.weight:GetWndPos().y,
+		note = info.note and info.note:GetWndPos().y or info.desc:GetWndPos().y,
+		desc = info.desc:GetWndPos().y,
+	}
+end
+
+local function set_wnd_y(wnd, y)
+	if not wnd then
+		return
+	end
+	local p = wnd:GetWndPos()
+	wnd:SetWndPos(vector2():set(p.x, y))
+end
+
+-- Weight just under the name; STATUS/desc sits SECTION_GAP below weight
+-- (same spacing as above/below PROPERTIES and other Sync_Finale blocks).
+local function apply_compact_header(info)
+	if not info or not info.name or not info.weight or not info.desc then
+		return
+	end
+	cache_header_ys(info)
+	local ys = info.dorn_hdr_ys
+	if not ys then
+		return
+	end
+
+	if CONFIG.compact_header then
+		local weight_y = ys.name + 10
+		set_wnd_y(info.weight, weight_y)
+		set_wnd_y(info.value, weight_y)
+		if info.note and info.note:IsShown() then
+			info:Sync_Y(info.weight, info.note, SECTION_GAP)
+			info:Sync_Y(info.note, info.desc, SECTION_GAP)
+		else
+			info:Sync_Y(info.weight, info.desc, SECTION_GAP)
+		end
+	else
+		set_wnd_y(info.weight, ys.weight)
+		set_wnd_y(info.value, ys.value)
+		set_wnd_y(info.note, ys.note)
+		set_wnd_y(info.desc, ys.desc)
+	end
+end
+
 local function refresh_weapon_damage_panel(info, obj, sec)
 	if not info then
 		return
@@ -2231,8 +2378,7 @@ local DORN_WHITE_STAT_NAMES = {
 	["ui_dorn_wpn_stalker_damage"] = true,
 	["ui_dorn_wpn_ammo_torso"] = true,
 	["ui_dorn_wpn_dispersion"] = true,
-	["ui_dorn_wpn_base_spread"] = true,
-	["ui_dorn_wpn_movement_spread"] = true,
+	["ui_dorn_wpn_spread"] = true,
 	["ui_dorn_wpn_barrel_wear"] = true,
 	["ui_dorn_wpn_burst_control"] = true,
 	["ui_dorn_wpn_bullet_drop"] = true,
@@ -2274,6 +2420,7 @@ local function build_white_stat_xml(handler, obj, sec, gr, stat)
 	local st_txt = STAT_XML:InitTextWnd("item_info:stats_box:prog_txt", st)
 	if gr.name == "ui_dorn_wpn_ammo_torso" or gr.name == "ui_dorn_wpn_stalker_damage"
 		or gr.name == "ui_dorn_wpn_bullet_drop" or gr.name == "ui_dorn_wpn_dispersion"
+		or gr.name == "ui_dorn_wpn_spread"
 		or gr.name == "ui_dorn_wpn_burst_control" or gr.name == "ui_dorn_wpn_barrel_wear" then
 		st_txt:SetTextComplexMode(true)
 	end
@@ -2418,7 +2565,10 @@ local function uiinfo_update_hook(self, obj, sec, flags)
 		-- Reset per-open tooltip debug dedupe.
 		tooltip_logged = {}
 		apply_custom_stat_display(self, obj, sec)
+		apply_compact_header(self)
 		refresh_weapon_damage_panel(self, obj, sec)
+		-- Always re-stack body under desc (weapons already synced inside refresh).
+		sync_damage_layout(self)
 	end
 end
 

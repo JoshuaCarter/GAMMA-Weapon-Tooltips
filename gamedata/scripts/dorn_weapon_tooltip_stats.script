@@ -1,6 +1,6 @@
 --[[
-	Extra weapon stat rows for Dorn's Weapon Tooltip (Dispersion, Base Spread,
-	Move Spread, Barrel Wear, Burst Size, Bullet Drop). Loaded before
+	Extra weapon stat rows for Dorn's Weapon Tooltips (Dispersion, Spread,
+	Barrel Wear, Burst Size, Bullet Drop). Loaded before
 	zz_dorn_weapon_tooltip_main, which registers them in utils_ui.stats_table.
 
 	X-Ray binds this file's environment to global dorn_weapon_tooltip_stats.
@@ -60,8 +60,7 @@ end
 -- String ids for the new rows (also used by main for white-text display).
 NAME = {
 	dispersion = "ui_dorn_wpn_dispersion",
-	base_spread = "ui_dorn_wpn_base_spread",
-	movement_spread = "ui_dorn_wpn_movement_spread",
+	spread = "ui_dorn_wpn_spread",
 	barrel_wear = "ui_dorn_wpn_barrel_wear",
 	burst_control = "ui_dorn_wpn_burst_control",
 	bullet_drop = "ui_dorn_wpn_bullet_drop",
@@ -252,7 +251,7 @@ function text_dispersion(obj, sec)
 	return fmt_drop_m(v)
 end
 
--- Base cone degrees. Lower is better.
+-- Standing / ADS cone degrees (min). Lower is better.
 function value_base_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
@@ -267,23 +266,14 @@ function value_base_spread(obj, sec)
 	return v
 end
 
-function text_base_spread(obj, sec)
-	local v = value_base_spread(obj, sec)
-	if not v then
-		return nil
-	end
-	return fmt_deg(v)
-end
-
--- Final hip-fire cone at run (degrees): Base Spread + movement. Lower is better.
+-- Final hip-fire cone at run (degrees, max): min + movement. Lower is better.
 function value_movement_spread(obj, sec)
 	sec = resolve_sec(obj, sec)
 	if not is_weapon_section(sec) then
 		return nil
 	end
 	-- Engine total hip cone = weapon fire_dispersion_base + actor PDM degrees
-	-- (Actor_Weapon.cpp). Shown as one number so players see actual spread while moving.
-	-- Uses normal run speed, not sprint.
+	-- (Actor_Weapon.cpp). Uses normal run speed, not sprint.
 	local fire_disp = wpn_param(obj, sec, "fire_dispersion_base", 0)
 	if fire_disp <= 0 then
 		log_once("move_spread_fail:" .. tostring(sec), string.format(
@@ -302,12 +292,24 @@ function value_movement_spread(obj, sec)
 	return total
 end
 
-function text_movement_spread(obj, sec)
-	local run = value_movement_spread(obj, sec)
-	if not run then
+-- Compare uses mean of min/max cone. Lower is better.
+function value_spread(obj, sec)
+	local lo = value_base_spread(obj, sec)
+	local hi = value_movement_spread(obj, sec)
+	if not lo or not hi then
 		return nil
 	end
-	return fmt_deg(run)
+	return (lo + hi) * 0.5
+end
+
+-- min - max degrees: standing-ADS cone - hip-run cone.
+function text_spread(obj, sec)
+	local lo = value_base_spread(obj, sec)
+	local hi = value_movement_spread(obj, sec)
+	if not lo or not hi then
+		return nil
+	end
+	return string.format("%s - %s", fmt_deg(lo), fmt_deg(hi))
 end
 
 -- Chance % per shot to lose 1% WPO barrel. Matches GAMMA Unjam Reload
@@ -538,8 +540,7 @@ end
 
 local TEXT_BY_NAME = {
 	[NAME.dispersion] = text_dispersion,
-	[NAME.base_spread] = text_base_spread,
-	[NAME.movement_spread] = text_movement_spread,
+	[NAME.spread] = text_spread,
 	[NAME.barrel_wear] = text_barrel_wear,
 	[NAME.burst_control] = text_burst_control,
 	[NAME.bullet_drop] = text_bullet_drop,
@@ -547,8 +548,7 @@ local TEXT_BY_NAME = {
 
 local VALUE_BY_NAME = {
 	[NAME.dispersion] = value_dispersion,
-	[NAME.base_spread] = value_base_spread,
-	[NAME.movement_spread] = value_movement_spread,
+	[NAME.spread] = value_spread,
 	[NAME.barrel_wear] = value_barrel_wear,
 	[NAME.burst_control] = value_burst_control,
 	[NAME.bullet_drop] = value_bullet_drop,
@@ -557,8 +557,7 @@ local VALUE_BY_NAME = {
 -- true = lower value is better (green when inspected gun is lower than equipped).
 local LOWER_BETTER = {
 	[NAME.dispersion] = true,
-	[NAME.base_spread] = true,
-	[NAME.movement_spread] = true,
+	[NAME.spread] = true,
 	[NAME.barrel_wear] = true,
 	[NAME.burst_control] = false,
 	[NAME.bullet_drop] = true,
@@ -567,8 +566,7 @@ local LOWER_BETTER = {
 -- Round compare deltas to match displayed precision.
 local ROUND_DECIMALS = {
 	[NAME.dispersion] = 2,
-	[NAME.base_spread] = 2,
-	[NAME.movement_spread] = 2,
+	[NAME.spread] = 2,
 	[NAME.barrel_wear] = 1,
 	[NAME.burst_control] = 1,
 	[NAME.bullet_drop] = 2,
@@ -592,8 +590,7 @@ end
 
 local STAT_SHORT = {
 	[NAME.dispersion] = "dispersion",
-	[NAME.base_spread] = "base_spread",
-	[NAME.movement_spread] = "move_spread",
+	[NAME.spread] = "spread",
 	[NAME.barrel_wear] = "barrel_wear",
 	[NAME.burst_control] = "burst_control",
 	[NAME.bullet_drop] = "bullet_drop",
