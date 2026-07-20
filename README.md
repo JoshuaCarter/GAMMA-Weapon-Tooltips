@@ -1,4 +1,4 @@
-# Dorn's Weapon Tooltips v0.3.2
+# Dorn's Weapon Tooltips v0.3.3
 
 Adds detailed weapon info to weapon tooltips and details window in **S.T.A.L.K.E.R. G.A.M.M.A.**
 
